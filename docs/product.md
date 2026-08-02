@@ -19,6 +19,12 @@ The product will allow a user to:
 7. See the next step during an active workout.
 8. Finish after all steps are complete.
 
+## Implementation status
+
+The exercise catalog is implemented: users can create, edit, delete, and
+reload locally stored exercises. The remaining MVP capabilities are not yet
+available in the user interface.
+
 ## Product principles
 
 - Mobile-first: the primary use happens on a phone during a workout.
@@ -30,8 +36,7 @@ The product will allow a user to:
 ## MVP boundaries
 
 MVP has no backend, registration, accounts, or synchronization. It does not
-track weight, repetitions, workout history, or progression. Product features
-are intentionally outside the current repository-foundation task.
+track weight, repetitions, workout history, or progression.
 
 The application interface is Russian. Code, identifiers, and repository
 documentation are English.

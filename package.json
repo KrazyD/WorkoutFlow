@@ -12,6 +12,7 @@
     "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm build"
   },
   "dependencies": {
+    "dexie": "^4.4.4",
     "react": "latest",
     "react-dom": "latest"
   },

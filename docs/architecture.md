@@ -40,8 +40,10 @@ rules.
 ### Database
 
 `src/db` owns local storage implementations, serialization, migrations, and
-mapping between stored records and domain values. No storage library is chosen
-in the foundation task.
+mapping between stored records and domain values. Dexie is the IndexedDB
+adapter. Schema version 1 contains the `exercises` table with `id` as its
+primary key and `name` as an index. Later schema changes must use additional
+Dexie versions and explicit migrations when records need transformation.
 
 ### Shared
 
@@ -53,7 +55,9 @@ helpers. It must not become a home for feature or domain behavior.
 The domain has no dependency on the other application layers. Features may
 depend on domain and shared code and use storage through explicit boundaries.
 Database adapters may depend on domain types or implement persistence
-contracts. Shared code must remain independent of features.
+contracts. Repository interfaces are owned by features; React components
+receive these interfaces and never import Dexie, the database singleton, or
+tables directly. Shared code must remain independent of features.
 
 ## Runtime boundaries
 
@@ -64,6 +68,6 @@ functions. This separation makes the engine testable with fixed time values.
 
 ## Deferred decisions
 
-The project deliberately has no database library, form library, schema
-validator, component kit, end-to-end test runner, PWA plugin, or state manager.
-Each choice should follow a concrete requirement rather than precede it.
+The project deliberately has no form library, schema validator, component kit,
+end-to-end test runner, PWA plugin, or state manager. Each choice should follow
+a concrete requirement rather than precede it.
