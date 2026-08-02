@@ -2,7 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { WorkoutTemplateRecord } from '../../domain/workout-template'
-import type { Exercise, RestPreset } from '../../domain/workout-session'
+import type { ActiveWorkoutSession, Exercise, RestPreset } from '../../domain/workout-session'
 import type { ExerciseRepository } from '../exercises/exercise-repository'
 import type { RestPresetRepository } from '../rest-presets/rest-preset-repository'
 import { WorkoutTemplatesScreen } from './WorkoutTemplatesScreen'
@@ -11,6 +11,7 @@ import type {
   UpdateWorkoutTemplateInput,
   WorkoutTemplateRepository,
 } from './workout-template-repository'
+import type { ActiveWorkoutSessionRepository } from '../workout-session/active-workout-session-repository'
 
 class InMemoryWorkoutTemplateRepository implements WorkoutTemplateRepository {
   private nextId = 1
@@ -68,6 +69,15 @@ class InMemoryRestPresetRepository implements RestPresetRepository {
   async remove(): Promise<void> {
     throw new Error('Unused')
   }
+}
+
+class InMemoryActiveSessionRepository implements ActiveWorkoutSessionRepository {
+  constructor(public session?: ActiveWorkoutSession) {}
+  async get() { return this.session }
+  async save(session: ActiveWorkoutSession) { this.session = session }
+  async update(session: ActiveWorkoutSession) { this.session = session }
+  async complete(session: ActiveWorkoutSession) { this.session = session }
+  async clear() { this.session = undefined }
 }
 
 const squat: Exercise = { id: 'squat', name: 'Приседания' }
@@ -180,6 +190,97 @@ describe('workout template list', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Не удалось загрузить тренировки. Попробуйте ещё раз.',
     )
+  })
+})
+
+describe('starting a workout', () => {
+  it('shows Start only for a non-empty template and saves a resolved snapshot', async () => {
+    const activeRepository = new InMemoryActiveSessionRepository()
+    const navigate = vi.fn()
+    render(
+      <WorkoutTemplatesScreen
+        repository={new InMemoryWorkoutTemplateRepository([
+          storedTemplate,
+          { id: 'empty', name: 'Пустая', steps: [] },
+        ])}
+        exerciseRepository={new InMemoryExerciseRepository([squat])}
+        restPresetRepository={new InMemoryRestPresetRepository([rest])}
+        activeWorkoutSessionRepository={activeRepository}
+        navigate={navigate}
+      />,
+    )
+    await screen.findByRole('heading', { name: 'Тренировка ног' })
+    const startButtons = screen.getAllByRole('button', { name: 'Начать' })
+    expect(startButtons[0]).toBeEnabled()
+    expect(startButtons[1]).toBeDisabled()
+    fireEvent.click(startButtons[0]!)
+    expect(await screen.findByText('Есть незавершённая тренировка')).toBeInTheDocument()
+    expect(activeRepository.session).toMatchObject({
+      status: 'exercise', currentStepIndex: 0,
+      templateSnapshot: { id: 'legs', name: 'Тренировка ног' },
+    })
+    expect(activeRepository.session?.templateSnapshot.steps[0]).toEqual({
+      type: 'exercise', exercise: { id: 'squat', name: 'Приседания' },
+    })
+    expect(navigate).toHaveBeenCalledWith('/workout-session')
+  })
+
+  it('reports creation errors without navigating', async () => {
+    const activeRepository = new InMemoryActiveSessionRepository()
+    vi.spyOn(activeRepository, 'save').mockRejectedValue(new Error('write failed'))
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const navigate = vi.fn()
+    render(
+      <WorkoutTemplatesScreen repository={new InMemoryWorkoutTemplateRepository([storedTemplate])}
+        exerciseRepository={new InMemoryExerciseRepository([squat])}
+        restPresetRepository={new InMemoryRestPresetRepository([rest])}
+        activeWorkoutSessionRepository={activeRepository} navigate={navigate} />,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Начать' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось начать тренировку')
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
+  it('restores an active session and handles start conflict explicitly', async () => {
+    const active: ActiveWorkoutSession = {
+      status: 'exercise', currentStepIndex: 0, startedAt: 1_000,
+      templateSnapshot: { id: 'current', name: 'Текущая', steps: [{ type: 'exercise', exercise: squat }] },
+    }
+    const activeRepository = new InMemoryActiveSessionRepository(active)
+    const navigate = vi.fn()
+    render(
+      <WorkoutTemplatesScreen repository={new InMemoryWorkoutTemplateRepository([storedTemplate])}
+        exerciseRepository={new InMemoryExerciseRepository([squat])}
+        restPresetRepository={new InMemoryRestPresetRepository([rest])}
+        activeWorkoutSessionRepository={activeRepository} navigate={navigate} />,
+    )
+    expect(await screen.findByText('Есть незавершённая тренировка')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Начать' }))
+    const dialog = screen.getByRole('alertdialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Отмена' }))
+    expect(activeRepository.session).toBe(active)
+    fireEvent.click(screen.getByRole('button', { name: 'Начать' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Продолжить текущую' }))
+    expect(navigate).toHaveBeenCalledWith('/workout-session')
+    expect(activeRepository.session).toBe(active)
+  })
+
+  it('replaces the current session only after confirmation', async () => {
+    const active: ActiveWorkoutSession = {
+      status: 'exercise', currentStepIndex: 0, startedAt: 1_000,
+      templateSnapshot: { id: 'current', name: 'Текущая', steps: [{ type: 'exercise', exercise: squat }] },
+    }
+    const activeRepository = new InMemoryActiveSessionRepository(active)
+    render(
+      <WorkoutTemplatesScreen repository={new InMemoryWorkoutTemplateRepository([storedTemplate])}
+        exerciseRepository={new InMemoryExerciseRepository([squat])}
+        restPresetRepository={new InMemoryRestPresetRepository([rest])}
+        activeWorkoutSessionRepository={activeRepository} navigate={vi.fn()} />,
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Начать' }))
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Завершить и начать новую' }))
+    await screen.findByText('Есть незавершённая тренировка')
+    expect(activeRepository.session?.templateSnapshot.id).toBe('legs')
   })
 })
 

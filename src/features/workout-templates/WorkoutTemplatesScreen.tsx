@@ -11,6 +11,12 @@ import type {
   WorkoutTemplateStep,
 } from '../../domain/workout-template'
 import type { Exercise, RestPreset } from '../../domain/workout-session'
+import {
+  createActiveWorkoutSession,
+  startWorkout,
+  type ActiveWorkoutSession,
+  type WorkoutTemplate,
+} from '../../domain/workout-session'
 import type { ExerciseRepository } from '../exercises/exercise-repository'
 import { formatRestDuration } from '../rest-presets/rest-duration'
 import type { RestPresetRepository } from '../rest-presets/rest-preset-repository'
@@ -33,11 +39,23 @@ import {
   moveStepUp,
   removeStep,
 } from './workout-step-list'
+import type { ActiveWorkoutSessionRepository } from '../workout-session/active-workout-session-repository'
 
 interface WorkoutTemplatesScreenProps {
   readonly repository: WorkoutTemplateRepository
   readonly exerciseRepository: ExerciseRepository
   readonly restPresetRepository: RestPresetRepository
+  readonly activeWorkoutSessionRepository?: ActiveWorkoutSessionRepository
+  readonly navigate?: (path: string) => void
+  readonly now?: () => number
+}
+
+const emptyActiveSessionRepository: ActiveWorkoutSessionRepository = {
+  get: async () => undefined,
+  save: async () => undefined,
+  update: async () => undefined,
+  complete: async () => undefined,
+  clear: async () => undefined,
 }
 
 type FormMode =
@@ -62,6 +80,9 @@ export function WorkoutTemplatesScreen({
   repository,
   exerciseRepository,
   restPresetRepository,
+  activeWorkoutSessionRepository = emptyActiveSessionRepository,
+  navigate = (path) => window.location.assign(path),
+  now = Date.now,
 }: WorkoutTemplatesScreenProps) {
   const [templates, setTemplates] = useState<WorkoutTemplateRecord[]>([])
   const [exercises, setExercises] = useState<Exercise[]>([])
@@ -76,6 +97,9 @@ export function WorkoutTemplatesScreen({
   const [templateToRemove, setTemplateToRemove] =
     useState<WorkoutTemplateRecord | null>(null)
   const [repositoryError, setRepositoryError] = useState<string | null>(null)
+  const [activeSession, setActiveSession] = useState<ActiveWorkoutSession>()
+  const [templateToStart, setTemplateToStart] =
+    useState<WorkoutTemplateRecord | null>(null)
 
   const exerciseById = useMemo(
     () => new Map(exercises.map((exercise) => [exercise.id, exercise])),
@@ -93,15 +117,17 @@ export function WorkoutTemplatesScreen({
 
   const loadData = useCallback(async () => {
     try {
-      const [storedTemplates, storedExercises, storedRestPresets] =
+      const [storedTemplates, storedExercises, storedRestPresets, storedSession] =
         await Promise.all([
           repository.getAll(),
           exerciseRepository.getAll(),
           restPresetRepository.getAll(),
+          activeWorkoutSessionRepository.get(),
         ])
       setTemplates(storedTemplates)
       setExercises(storedExercises)
       setRestPresets(storedRestPresets)
+      setActiveSession(storedSession)
       setRepositoryError(null)
     } catch (error) {
       showRepositoryError(
@@ -114,7 +140,7 @@ export function WorkoutTemplatesScreen({
   }, [
     exerciseRepository,
     repository,
-    restPresetRepository,
+    restPresetRepository, activeWorkoutSessionRepository,
     showRepositoryError,
   ])
 
@@ -125,12 +151,14 @@ export function WorkoutTemplatesScreen({
       repository.getAll(),
       exerciseRepository.getAll(),
       restPresetRepository.getAll(),
+      activeWorkoutSessionRepository.get(),
     ])
-      .then(([storedTemplates, storedExercises, storedRestPresets]) => {
+      .then(([storedTemplates, storedExercises, storedRestPresets, storedSession]) => {
         if (isActive) {
           setTemplates(storedTemplates)
           setExercises(storedExercises)
           setRestPresets(storedRestPresets)
+          setActiveSession(storedSession)
           setRepositoryError(null)
         }
       })
@@ -155,6 +183,7 @@ export function WorkoutTemplatesScreen({
     exerciseRepository,
     repository,
     restPresetRepository,
+    activeWorkoutSessionRepository,
     showRepositoryError,
   ])
 
@@ -268,6 +297,70 @@ export function WorkoutTemplatesScreen({
       : 'Удалённый вариант отдыха'
   }
 
+  const resolveTemplateSnapshot = (
+    template: WorkoutTemplateRecord,
+  ): WorkoutTemplate | undefined => {
+    const steps: WorkoutTemplate['steps'][number][] = []
+    for (const step of template.steps) {
+      if (step.type === 'exercise') {
+        const exercise = exerciseById.get(step.exerciseId)
+        if (!exercise) return undefined
+        steps.push({ type: 'exercise', exercise })
+      } else {
+        const restPreset = restPresetById.get(step.restPresetId)
+        if (!restPreset) return undefined
+        steps.push({ type: 'rest', restPreset })
+      }
+    }
+    return { id: template.id, name: template.name, steps }
+  }
+
+  const startTemplate = async (template: WorkoutTemplateRecord) => {
+    const snapshot = resolveTemplateSnapshot(template)
+    if (!snapshot) {
+      setRepositoryError('Не удалось начать тренировку: один из шагов удалён из справочника.')
+      return
+    }
+    const created = createActiveWorkoutSession(snapshot)
+    if (!created.success) return
+    const started = startWorkout(created.value, now())
+    if (!started.success) return
+
+    setIsSaving(true)
+    setRepositoryError(null)
+    try {
+      await activeWorkoutSessionRepository.save(started.value)
+      setActiveSession(started.value)
+      setTemplateToStart(null)
+      navigate('/workout-session')
+    } catch (error) {
+      showRepositoryError(error, 'Не удалось начать тренировку. Попробуйте ещё раз.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const requestStart = (template: WorkoutTemplateRecord) => {
+    if (activeSession && activeSession.status !== 'completed') {
+      setTemplateToStart(template)
+    } else {
+      void startTemplate(template)
+    }
+  }
+
+  const replaceActiveSession = async () => {
+    if (!templateToStart) return
+    setIsSaving(true)
+    try {
+      await activeWorkoutSessionRepository.clear()
+      setActiveSession(undefined)
+      await startTemplate(templateToStart)
+    } catch (error) {
+      showRepositoryError(error, 'Не удалось заменить активную тренировку. Попробуйте ещё раз.')
+      setIsSaving(false)
+    }
+  }
+
   return (
     <CatalogPageLayout
       activePage="workouts"
@@ -277,6 +370,27 @@ export function WorkoutTemplatesScreen({
     >
       {repositoryError ? (
         <RepositoryErrorAlert message={repositoryError} />
+      ) : null}
+
+      {activeSession && activeSession.status !== 'completed' ? (
+        <section className="mt-6 rounded-2xl border border-lime-900 bg-lime-950/30 p-5" aria-label="Незавершённая тренировка">
+          <p className="text-sm text-lime-300">Есть незавершённая тренировка</p>
+          <h2 className="mt-1 text-lg font-semibold">{activeSession.templateSnapshot.name}</h2>
+          <p className="mt-1 text-sm text-slate-400">Шаг {activeSession.currentStepIndex + 1} из {activeSession.templateSnapshot.steps.length}</p>
+          <button type="button" className="mt-3 min-h-11 font-semibold text-lime-300" onClick={() => navigate('/workout-session')}>Продолжить</button>
+        </section>
+      ) : null}
+
+      {templateToStart ? (
+        <section role="alertdialog" aria-labelledby="replace-session-title" className="mt-6 rounded-2xl border border-amber-800 bg-amber-950/30 p-5">
+          <h2 id="replace-session-title" className="font-semibold">Уже есть незавершённая тренировка</h2>
+          <p className="mt-2 text-sm text-slate-300">Чтобы начать «{templateToStart.name}», сначала завершите текущую.</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button type="button" className="min-h-11 rounded-xl border border-slate-700 px-4" onClick={() => navigate('/workout-session')}>Продолжить текущую</button>
+            <button type="button" disabled={isSaving} className="min-h-11 rounded-xl bg-red-500 px-4 font-semibold" onClick={() => void replaceActiveSession()}>Завершить и начать новую</button>
+            <button type="button" className="min-h-11 px-4" onClick={() => setTemplateToStart(null)}>Отмена</button>
+          </div>
+        </section>
       ) : null}
 
       {formMode ? (
@@ -544,6 +658,14 @@ export function WorkoutTemplatesScreen({
                   />
                 ) : (
                   <div className="mt-4 flex gap-4">
+                    <button
+                      type="button"
+                      disabled={template.steps.length === 0 || isSaving}
+                      onClick={() => requestStart(template)}
+                      className="min-h-11 text-sm font-semibold text-lime-300 disabled:text-slate-600"
+                    >
+                      Начать
+                    </button>
                     <button
                       type="button"
                       onClick={() => void openEditForm(template.id)}

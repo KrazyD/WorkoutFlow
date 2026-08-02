@@ -41,12 +41,13 @@ rules.
 
 `src/db` owns local storage implementations, serialization, migrations, and
 mapping between stored records and domain values. Dexie is the IndexedDB
-adapter. Schema version 1 introduced `exercises`; version 2 retains that table
-and adds `restPresets`; version 3 retains both catalog tables and adds
-`workoutTemplates`. All three tables use `id` as the primary key and `name` as
-an index. Workout template steps store catalog identifiers rather than embedded
-catalog records. Later schema changes must use additional Dexie versions and
-explicit migrations when records need transformation.
+adapter. Schema version 1 introduced `exercises`; version 2 added
+`restPresets`; version 3 added `workoutTemplates`; version 4 retains those
+tables and adds `activeWorkoutSessions`. The active-session repository uses the
+fixed `active` primary key, so at most one current session can exist. Workout
+template steps store catalog identifiers rather than embedded catalog records.
+Later schema changes must use additional Dexie versions and explicit migrations
+when records need transformation.
 
 ### Shared
 
@@ -73,6 +74,10 @@ Rest duration is stored as integer `durationSeconds`. The rest preset feature
 converts the form's minute and second fields to this domain value before calling
 the repository and decomposes it when editing. Human-readable Russian duration
 formatting is a pure feature-level function.
+
+The active-workout feature resolves template references before calling the
+domain engine. React receives repositories through dependency injection and
+commits each domain transition to IndexedDB before rendering the new step.
 
 ## Deferred decisions
 

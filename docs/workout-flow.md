@@ -2,11 +2,9 @@
 
 ## Template preparation
 
-The workout template editor is implemented. It persists an ordered sequence of
-exercise and rest catalog identifiers and tolerates references to catalog
-records that have since been deleted. Resolving those references into an
-immutable session snapshot and starting a workout remain outside the editor
-feature and are not yet connected to the user interface.
+The workout template editor persists catalog identifiers. Starting a workout
+resolves every reference into an immutable snapshot; a template with a missing
+reference cannot start and shows a user-facing error.
 
 ## Session lifecycle
 
@@ -18,18 +16,18 @@ feature and are not yet connected to the user interface.
    `restEndsAt` from the supplied time and snapshot duration.
 5. The UI renders the active step and, when available, the next step.
 6. An exercise advances only after an explicit completion action.
-7. A rest advances when the caller supplies a time at or after `restEndsAt`.
+7. A rest advances after the explicit “finish rest” action. The configured
+   duration remains visible but no countdown runs.
 8. Advancing past the final step changes status to `completed`.
 
-## Planned domain operations
+## Domain operations
 
 The precise API will be introduced with the feature, but the engine is expected
 to expose pure operations equivalent to:
 
 - start a workout from a resolved snapshot and explicit current time;
 - complete the active exercise at an explicit current time;
-- advance an expired rest at an explicit current time;
-- calculate remaining rest seconds from state and explicit current time;
+- manually complete the active rest at an explicit current time;
 - select the current and next steps without mutating state.
 
 Each operation returns new state. It does not persist data, schedule timers,
@@ -37,21 +35,21 @@ read the clock, or trigger UI effects.
 
 ## Rest timing
 
-`restEndsAt` is stored as an absolute timestamp so a session remains correct
-when the tab is backgrounded and browser intervals are throttled. A UI interval
-only requests a fresh render; it is not the source of truth. Remaining time is
-derived from `restEndsAt - now` and clamped at zero.
+`restEndsAt` remains part of domain state for a future countdown, but the
+current feature neither reads it to block the user nor schedules browser
+timers. Rest duration is static until the user finishes the step manually.
 
 ## Interruption and restoration
 
-Persistence of an active session is a later feature. When added, restoration
-will load the snapshot and timestamps, read the current time at the application
-edge, and ask the domain engine for the appropriate state. No missed timer ticks
-need to be replayed.
+One session is persisted in IndexedDB under a fixed key. Reloading the template
+list shows its name, saved step index, and a Continue action. Opening
+`/workout-session` reads the same domain state, so refresh does not reset
+progress. Starting a second template requires an explicit choice to continue
+the current session, replace it, or cancel.
 
 ## Invalid actions
 
 The engine must reject or return unchanged state for transitions that do not
-match the active step, such as completing an exercise during rest or advancing
-a rest before its deadline. The exact error-result convention will be chosen
-when these operations are implemented.
+match the active step, such as completing an exercise during rest or finishing
+rest while an exercise is active. Operations return explicit success or
+domain-error results.

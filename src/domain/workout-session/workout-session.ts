@@ -162,13 +162,6 @@ export function completeCurrentRest(
     return failure({ code: 'NOT_REST' })
   }
 
-  if (now < session.restEndsAt) {
-    return failure({
-      code: 'REST_NOT_FINISHED',
-      restEndsAt: session.restEndsAt,
-    })
-  }
-
   return success(advanceWorkout(session, now))
 }
 

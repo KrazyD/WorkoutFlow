@@ -195,19 +195,15 @@ describe('workout session', () => {
     })
   })
 
-  it('rejects rest completion before its end time', () => {
+  it('allows manually finishing rest before its planned end time', () => {
     const session = expectSuccess(
       createActiveWorkoutSession(template([restStep(shortRest)])),
     )
     const resting = expectSuccess(startWorkout(session, 1_000))
 
-    expect(completeCurrentRest(resting, 30_999)).toEqual({
-      success: false,
-      error: {
-        code: 'REST_NOT_FINISHED',
-        restEndsAt: 31_000,
-      },
-    })
+    expect(expectSuccess(completeCurrentRest(resting, 2_000)).status).toBe(
+      'completed',
+    )
   })
 
   it('returns an explicit error for operations after completion', () => {

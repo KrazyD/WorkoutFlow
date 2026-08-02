@@ -30,7 +30,7 @@ A reusable workout plan.
 
 A persisted template must contain at least one step before it can be saved.
 The template editor supports creating, reordering, replacing, and removing
-steps. Starting a workout from a template is outside the current UI scope.
+steps. Only a non-empty template can be started.
 
 ## WorkoutStep
 
@@ -48,17 +48,24 @@ deletion does not cascade into templates.
 
 ## ActiveWorkout
 
-The state of one running workout.
+The state of one running or just-completed workout (`ActiveWorkoutSession`).
 
 - `templateSnapshot`: immutable workout data required to finish the session.
 - `currentStepIndex`: zero-based position of the active step.
 - `startedAt`: explicit start timestamp.
-- `status`: `active` or `completed`.
+- `status`: `not_started`, `exercise`, `rest`, or `completed`.
 - `restEndsAt`: end timestamp when the active step is rest; absent otherwise.
 
-The snapshot prevents later catalog or template edits from changing an active
-session. Unlike the persisted `WorkoutTemplate`, it contains resolved exercise
-and rest details instead of live catalog references.
+The snapshot contains the template identifier and name plus ordered, resolved
+steps. Exercise steps copy the exercise identifier, name, and optional
+description; rest steps copy the preset identifier, name, and duration. It
+therefore prevents later catalog or template edits or deletions from changing
+or breaking an active session.
+
+The persisted record wraps this domain value under the fixed `active` key.
+Completed state is kept only long enough to render the completion screen and is
+cleared when the user returns to the template list; workout history is not
+created.
 
 ## Identity and time
 

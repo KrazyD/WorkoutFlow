@@ -15,15 +15,14 @@ The product will allow a user to:
 3. Build a workout template from ordered exercise and rest steps.
 4. Start a workout from a template.
 5. Mark an exercise as complete.
-6. See a countdown while resting.
+6. Manually finish a rest step (a countdown is deferred).
 7. See the next step during an active workout.
 8. Finish after all steps are complete.
 
 ## Implementation status
 
-The exercise and rest preset catalogs and the workout template editor are
-implemented: users can create, edit, delete, and reload locally stored entries.
-Starting and conducting a workout remain unavailable in the user interface.
+The catalogs, workout template editor, and manual active-workout flow are
+implemented. An unfinished workout is restored from local storage.
 
 ## Product principles
 

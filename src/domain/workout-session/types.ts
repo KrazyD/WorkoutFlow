@@ -69,7 +69,6 @@ export type WorkoutSessionError =
   | { readonly code: 'SESSION_COMPLETED' }
   | { readonly code: 'NOT_EXERCISE' }
   | { readonly code: 'NOT_REST' }
-  | { readonly code: 'REST_NOT_FINISHED'; readonly restEndsAt: number }
 
 export type OperationResult<T> =
   | { readonly success: true; readonly value: T }
