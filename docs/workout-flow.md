@@ -1,5 +1,13 @@
 # Workout flow
 
+## Template preparation
+
+The workout template editor is implemented. It persists an ordered sequence of
+exercise and rest catalog identifiers and tolerates references to catalog
+records that have since been deleted. Resolving those references into an
+immutable session snapshot and starting a workout remain outside the editor
+feature and are not yet connected to the user interface.
+
 ## Session lifecycle
 
 1. The user chooses a valid `WorkoutTemplate`.

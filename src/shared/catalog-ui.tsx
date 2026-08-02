@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
 interface CatalogPageLayoutProps {
-  readonly activePage: 'exercises' | 'rest-presets'
+  readonly activePage: 'exercises' | 'rest-presets' | 'workouts'
   readonly title: string
   readonly actionLabel: string
   readonly onAction: () => void
@@ -11,6 +11,7 @@ interface CatalogPageLayoutProps {
 const navigationItems = [
   { id: 'exercises', href: '/exercises', label: 'Упражнения' },
   { id: 'rest-presets', href: '/rest-presets', label: 'Отдых' },
+  { id: 'workouts', href: '/workouts', label: 'Тренировки' },
 ] as const
 
 export function CatalogPageLayout({
@@ -42,7 +43,7 @@ export function CatalogPageLayout({
             </button>
           </div>
 
-          <nav aria-label="Справочники" className="mt-5 flex gap-2">
+          <nav aria-label="Разделы" className="mt-5 flex flex-wrap gap-2">
             {navigationItems.map((item) => {
               const isActive = item.id === activePage
 

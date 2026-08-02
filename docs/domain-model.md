@@ -28,17 +28,23 @@ A reusable workout plan.
 - `name`: non-empty display name.
 - `steps`: ordered list of `WorkoutStep` values.
 
-A template must contain at least one step before it can be started.
+A persisted template must contain at least one step before it can be saved.
+The template editor supports creating, reordering, replacing, and removing
+steps. Starting a workout from a template is outside the current UI scope.
 
 ## WorkoutStep
 
-A discriminated union with two variants:
+A persisted step has its own stable `id` and is a discriminated union with two
+variants:
 
-- `exercise`: references an `Exercise` by identifier.
-- `rest`: references a `RestPreset` by identifier.
+- `exercise`: stores `exerciseId`, referencing an `Exercise` by identifier.
+- `rest`: stores `restPresetId`, referencing a `RestPreset` by identifier.
 
 Order is represented by position in `WorkoutTemplate.steps`, not by a mutable
-order field.
+order field. Names, descriptions, and durations are not copied into persisted
+steps. If a referenced catalog record is later deleted, the editor displays a
+missing-record placeholder and keeps the step removable or replaceable; catalog
+deletion does not cascade into templates.
 
 ## ActiveWorkout
 
@@ -51,8 +57,8 @@ The state of one running workout.
 - `restEndsAt`: end timestamp when the active step is rest; absent otherwise.
 
 The snapshot prevents later catalog or template edits from changing an active
-session. It should contain resolved exercise and rest details instead of live
-catalog references.
+session. Unlike the persisted `WorkoutTemplate`, it contains resolved exercise
+and rest details instead of live catalog references.
 
 ## Identity and time
 

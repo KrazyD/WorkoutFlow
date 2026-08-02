@@ -42,9 +42,11 @@ rules.
 `src/db` owns local storage implementations, serialization, migrations, and
 mapping between stored records and domain values. Dexie is the IndexedDB
 adapter. Schema version 1 introduced `exercises`; version 2 retains that table
-and adds `restPresets`. Both tables use `id` as the primary key and `name` as an
-index. Later schema changes must use additional Dexie versions and explicit
-migrations when records need transformation.
+and adds `restPresets`; version 3 retains both catalog tables and adds
+`workoutTemplates`. All three tables use `id` as the primary key and `name` as
+an index. Workout template steps store catalog identifiers rather than embedded
+catalog records. Later schema changes must use additional Dexie versions and
+explicit migrations when records need transformation.
 
 ### Shared
 
