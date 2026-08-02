@@ -1,16 +1,20 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
   completeCurrentExercise,
   completeCurrentRest,
+  extendCurrentRest,
   getCurrentStep,
   getNextStep,
+  getRemainingRestSeconds,
+  isRestFinished,
   type ActiveWorkoutSession,
   type WorkoutStep,
 } from '../../domain/workout-session'
 import { RepositoryErrorAlert } from '../../shared/catalog-ui'
 import { formatRestDuration } from '../rest-presets/rest-duration'
 import type { ActiveWorkoutSessionRepository } from './active-workout-session-repository'
+import { formatCountdown } from './countdown'
 
 interface WorkoutSessionScreenProps {
   readonly repository: ActiveWorkoutSessionRepository
@@ -33,6 +37,10 @@ export function WorkoutSessionScreen({
   const [isSaving, setIsSaving] = useState(false)
   const [showExitConfirmation, setShowExitConfirmation] = useState(false)
   const [error, setError] = useState<string>()
+  const [restCompletionFailed, setRestCompletionFailed] = useState(false)
+  const [currentTime, setCurrentTime] = useState(() => now())
+  const transitionInFlight = useRef(false)
+  const activeRestEndsAt = session?.status === 'rest' ? session.restEndsAt : undefined
 
   const reportError = useCallback((cause: unknown, message: string) => {
     console.error('Active workout session repository operation failed.', cause)
@@ -63,22 +71,30 @@ export function WorkoutSessionScreen({
     }
   }, [reportError, repository])
 
-  const advance = async () => {
-    if (!session || session.status === 'not_started' || session.status === 'completed')
+  const persistTransition = useCallback(async (
+    sourceSession: ActiveWorkoutSession,
+    transition: 'exercise' | 'rest',
+  ) => {
+    if (transitionInFlight.current) return
+    if (sourceSession.status === 'not_started' || sourceSession.status === 'completed')
       return
 
+    transitionInFlight.current = true
+    const transitionTime = now()
     const result =
-      session.status === 'exercise'
-        ? completeCurrentExercise(session, now())
-        : completeCurrentRest(session, now())
+      transition === 'exercise'
+        ? completeCurrentExercise(sourceSession, transitionTime)
+        : completeCurrentRest(sourceSession, transitionTime)
 
     if (!result.success) {
       reportError(result.error, 'Не удалось перейти к следующему шагу.')
+      transitionInFlight.current = false
       return
     }
 
     setIsSaving(true)
     setError(undefined)
+    setRestCompletionFailed(false)
     try {
       if (result.value.status === 'completed') {
         await repository.complete(result.value)
@@ -86,13 +102,74 @@ export function WorkoutSessionScreen({
         await repository.update(result.value)
       }
       setSession(result.value)
+      setCurrentTime(transitionTime)
     } catch (cause) {
+      if (transition === 'rest') setRestCompletionFailed(true)
       reportError(
         cause,
-        'Не удалось сохранить прогресс. Текущий шаг не изменён.',
+        transition === 'rest'
+          ? 'Не удалось завершить отдых. Текущий шаг не изменён.'
+          : 'Не удалось сохранить прогресс. Текущий шаг не изменён.',
       )
     } finally {
       setIsSaving(false)
+      transitionInFlight.current = false
+    }
+  }, [now, reportError, repository])
+
+  const advance = () => {
+    if (!session || session.status === 'not_started' || session.status === 'completed')
+      return
+    void persistTransition(session, session.status)
+  }
+
+  useEffect(() => {
+    if (session?.status !== 'rest' || transitionInFlight.current) return
+
+    const synchronize = () => setCurrentTime(now())
+    synchronize()
+    const intervalId = window.setInterval(synchronize, 1_000)
+    document.addEventListener('visibilitychange', synchronize)
+
+    return () => {
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', synchronize)
+    }
+  }, [activeRestEndsAt, now, session?.status])
+
+  useEffect(() => {
+    if (
+      session?.status === 'rest' &&
+      isRestFinished(session.restEndsAt, currentTime) &&
+      !restCompletionFailed &&
+      !transitionInFlight.current
+    ) {
+      void persistTransition(session, 'rest')
+    }
+  }, [currentTime, persistTransition, restCompletionFailed, session])
+
+  const extendRest = async () => {
+    if (session?.status !== 'rest' || transitionInFlight.current) return
+
+    transitionInFlight.current = true
+    const result = extendCurrentRest(session, 30)
+    if (!result.success) {
+      reportError(result.error, 'Не удалось увеличить время отдыха.')
+      transitionInFlight.current = false
+      return
+    }
+
+    setIsSaving(true)
+    setError(undefined)
+    try {
+      await repository.update(result.value)
+      setSession(result.value)
+      setCurrentTime(now())
+    } catch (cause) {
+      reportError(cause, 'Не удалось увеличить время отдыха. Попробуйте ещё раз.')
+    } finally {
+      setIsSaving(false)
+      transitionInFlight.current = false
     }
   }
 
@@ -174,8 +251,15 @@ export function WorkoutSessionScreen({
             <h2 className="mt-3 text-4xl font-bold tracking-tight">
               {currentStep.type === 'exercise' ? currentStep.exercise.name : currentStep.restPreset.name}
             </h2>
-            {currentStep.type === 'rest' ? (
-              <p className="mt-3 text-2xl text-slate-200">{formatRestDuration(currentStep.restPreset.durationSeconds)}</p>
+            {currentStep.type === 'rest' && session.status === 'rest' ? (
+              <p
+                className="mt-6 text-center text-7xl font-bold tabular-nums tracking-tight text-white"
+                aria-label="Осталось времени"
+              >
+                {formatCountdown(
+                  getRemainingRestSeconds(session.restEndsAt, currentTime),
+                )}
+              </p>
             ) : null}
             {nextStep ? (
               <div className="mt-10 rounded-2xl bg-slate-900 p-5">
@@ -183,9 +267,24 @@ export function WorkoutSessionScreen({
                 <p className="mt-1 font-semibold">{stepName(nextStep)}</p>
               </div>
             ) : null}
-            <button type="button" disabled={isSaving} className="mt-8 min-h-16 w-full rounded-2xl bg-lime-300 px-6 text-xl font-bold text-slate-950 disabled:opacity-50" onClick={() => void advance()}>
-              {isSaving ? 'Сохранение…' : currentStep.type === 'exercise' ? 'Выполнено' : 'Завершить отдых'}
-            </button>
+            {currentStep.type === 'rest' ? (
+              <div className="mt-8 grid gap-3 sm:grid-cols-2">
+                <button type="button" disabled={isSaving} className="min-h-14 rounded-2xl border border-slate-700 px-5 text-lg font-semibold disabled:opacity-50" onClick={() => void extendRest()}>
+                  +30 секунд
+                </button>
+                <button type="button" disabled={isSaving} className="min-h-14 rounded-2xl bg-lime-300 px-5 text-lg font-bold text-slate-950 disabled:opacity-50" onClick={advance}>
+                  {isSaving
+                    ? 'Сохранение…'
+                    : restCompletionFailed
+                      ? 'Повторить'
+                      : 'Пропустить отдых'}
+                </button>
+              </div>
+            ) : (
+              <button type="button" disabled={isSaving} className="mt-8 min-h-16 w-full rounded-2xl bg-lime-300 px-6 text-xl font-bold text-slate-950 disabled:opacity-50" onClick={advance}>
+                {isSaving ? 'Сохранение…' : 'Выполнено'}
+              </button>
+            )}
           </section>
         ) : null}
       </div>

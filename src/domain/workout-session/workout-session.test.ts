@@ -4,8 +4,11 @@ import {
   completeCurrentExercise,
   completeCurrentRest,
   createActiveWorkoutSession,
+  extendCurrentRest,
   getCurrentStep,
   getNextStep,
+  getRemainingRestSeconds,
+  isRestFinished,
   isWorkoutCompleted,
   startWorkout,
   type Exercise,
@@ -99,6 +102,28 @@ describe('workout session', () => {
       currentStepIndex: 1,
       restEndsAt: 35_000,
     })
+  })
+
+  it('calculates remaining rest from the absolute end time', () => {
+    expect(getRemainingRestSeconds(91_000, 1_000)).toBe(90)
+    expect(getRemainingRestSeconds(91_000, 31_000)).toBe(60)
+    expect(getRemainingRestSeconds(91_000, 90_001)).toBe(1)
+    expect(getRemainingRestSeconds(91_000, 91_000)).toBe(0)
+    expect(getRemainingRestSeconds(91_000, 100_000)).toBe(0)
+    expect(isRestFinished(91_000, 90_999)).toBe(false)
+    expect(isRestFinished(91_000, 91_000)).toBe(true)
+  })
+
+  it('extends an active rest from its persisted end time', () => {
+    const session = expectSuccess(
+      createActiveWorkoutSession(template([restStep(shortRest)])),
+    )
+    const resting = expectSuccess(startWorkout(session, 1_000))
+    if (resting.status !== 'rest') throw new Error('Expected rest')
+    const extended = expectSuccess(extendCurrentRest(resting, 30))
+
+    expect(extended.restEndsAt).toBe(61_000)
+    expect(resting.restEndsAt).toBe(31_000)
   })
 
   it('opens the next exercise after completing rest', () => {

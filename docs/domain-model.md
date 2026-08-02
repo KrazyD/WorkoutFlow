@@ -79,5 +79,7 @@ domain operation that needs it.
 - The current step index addresses a snapshot step while status is `active`.
 - A completed workout has no active step and no `restEndsAt`.
 - `restEndsAt` exists only for an active rest step.
+- Remaining rest seconds are derived as
+  `max(0, ceil((restEndsAt - currentTime) / 1000))` and are never persisted.
 - Completing a step advances exactly once or completes the session.
 - Exercise and rest catalog deletion must not invalidate existing snapshots.

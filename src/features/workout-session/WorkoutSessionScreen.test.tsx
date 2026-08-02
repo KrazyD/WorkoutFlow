@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   createActiveWorkoutSession,
@@ -54,12 +54,13 @@ class MemoryRepository implements ActiveWorkoutSessionRepository {
 const renderScreen = (
   repository = new MemoryRepository(),
   navigate = vi.fn(),
+  now = () => 2_000,
 ) => {
   render(
     <WorkoutSessionScreen
       repository={repository}
       navigate={navigate}
-      now={() => 2_000}
+      now={now}
     />,
   )
   return { repository, navigate }
@@ -83,8 +84,9 @@ describe('active workout session', () => {
     expect(await screen.findByText('Шаг 2 из 3')).toBeInTheDocument()
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ status: 'rest', currentStepIndex: 1 }))
     expect(screen.getByRole('heading', { name: 'Обычный' })).toBeInTheDocument()
-    expect(screen.getByText('1 минута 30 секунд')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Завершить отдых' })).toBeInTheDocument()
+    expect(screen.getByText('01:30')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Пропустить отдых' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+30 секунд' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Выполнено' })).not.toBeInTheDocument()
   })
 
@@ -104,7 +106,7 @@ describe('active workout session', () => {
     const complete = vi.spyOn(repository, 'complete')
     await screen.findByText('Шаг 1 из 3')
     fireEvent.click(screen.getByRole('button', { name: 'Выполнено' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Завершить отдых' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Пропустить отдых' }))
     expect(await screen.findByText('Шаг 3 из 3')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Выполнено' }))
     expect(await screen.findByRole('heading', { name: 'Тренировка завершена' })).toBeInTheDocument()
@@ -122,6 +124,7 @@ describe('active workout session', () => {
     })
     renderScreen(repository)
     expect(await screen.findByText('Шаг 2 из 3')).toBeInTheDocument()
+    expect(screen.getByText('01:29')).toBeInTheDocument()
   })
 
   it('clears a completed session when returning to workouts', async () => {
@@ -148,5 +151,121 @@ describe('active workout session', () => {
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Завершить тренировку' }))
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/workouts'))
     expect(repository.session).toBeUndefined()
+  })
+})
+
+describe('rest countdown', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  const restingRepository = (restEndsAt: number) => {
+    const session = startedSession()
+    return new MemoryRepository({
+      ...session,
+      status: 'rest',
+      currentStepIndex: 1,
+      restEndsAt,
+    })
+  }
+
+  it('updates from the absolute end time and advances once at zero', async () => {
+    vi.useFakeTimers()
+    let currentTime = 1_000
+    const repository = restingRepository(3_000)
+    const update = vi.spyOn(repository, 'update')
+    renderScreen(repository, vi.fn(), () => currentTime)
+
+    await act(async () => undefined)
+    expect(screen.getByText('00:02')).toBeInTheDocument()
+
+    currentTime = 2_001
+    await act(async () => vi.advanceTimersByTime(1_000))
+    expect(screen.getByText('00:01')).toBeInTheDocument()
+
+    currentTime = 3_000
+    await act(async () => vi.advanceTimersByTime(1_000))
+    expect(screen.getByText('Шаг 3 из 3')).toBeInTheDocument()
+    expect(update).toHaveBeenCalledTimes(1)
+
+    await act(async () => vi.advanceTimersByTime(5_000))
+    expect(update).toHaveBeenCalledTimes(1)
+  })
+
+  it('automatically finishes an expired restored rest', async () => {
+    const repository = restingRepository(1_000)
+    renderScreen(repository, vi.fn(), () => 2_000)
+
+    expect(await screen.findByText('Шаг 3 из 3')).toBeInTheDocument()
+    expect(repository.session).toMatchObject({ status: 'exercise', currentStepIndex: 2 })
+  })
+
+  it('keeps the rest visible after a failed auto transition and retries', async () => {
+    const repository = restingRepository(1_000)
+    const update = vi.spyOn(repository, 'update').mockRejectedValueOnce(new Error('write failed'))
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    renderScreen(repository, vi.fn(), () => 2_000)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось завершить отдых')
+    expect(screen.getByText('00:00')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByText('Шаг 3 из 3')).toBeInTheDocument()
+    expect(update).toHaveBeenCalledTimes(2)
+  })
+
+  it('extends rest repeatedly and persists each new absolute end time', async () => {
+    let currentTime = 1_000
+    const repository = restingRepository(61_000)
+    const update = vi.spyOn(repository, 'update')
+    renderScreen(repository, vi.fn(), () => currentTime)
+    await screen.findByText('01:00')
+
+    fireEvent.click(screen.getByRole('button', { name: '+30 секунд' }))
+    expect(await screen.findByText('01:30')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '+30 секунд' }))
+    expect(await screen.findByText('02:00')).toBeInTheDocument()
+    expect(update).toHaveBeenNthCalledWith(1, expect.objectContaining({ restEndsAt: 91_000 }))
+    expect(update).toHaveBeenNthCalledWith(2, expect.objectContaining({ restEndsAt: 121_000 }))
+    currentTime = 2_000
+  })
+
+  it('rolls back a failed extension and prevents double skip', async () => {
+    const repository = restingRepository(61_000)
+    const update = vi.spyOn(repository, 'update')
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    renderScreen(repository, vi.fn(), () => 1_000)
+    await screen.findByText('01:00')
+
+    update.mockRejectedValueOnce(new Error('write failed'))
+    fireEvent.click(screen.getByRole('button', { name: '+30 секунд' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось увеличить время')
+    expect(screen.getByText('01:00')).toBeInTheDocument()
+
+    const skipButton = screen.getByRole('button', { name: 'Пропустить отдых' })
+    fireEvent.click(skipButton)
+    fireEvent.click(skipButton)
+    expect(await screen.findByText('Шаг 3 из 3')).toBeInTheDocument()
+    expect(update).toHaveBeenCalledTimes(2)
+  })
+
+  it('synchronizes on visibility change and clears its single interval on unmount', async () => {
+    vi.useFakeTimers()
+    let currentTime = 1_000
+    const setIntervalSpy = vi.spyOn(window, 'setInterval')
+    const clearIntervalSpy = vi.spyOn(window, 'clearInterval')
+    const repository = restingRepository(61_000)
+    const rendered = render(
+      <WorkoutSessionScreen repository={repository} navigate={vi.fn()} now={() => currentTime} />,
+    )
+    await act(async () => undefined)
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1)
+
+    currentTime = 31_000
+    act(() => document.dispatchEvent(new Event('visibilitychange')))
+    expect(screen.getByText('00:30')).toBeInTheDocument()
+
+    rendered.unmount()
+    expect(clearIntervalSpy).toHaveBeenCalledTimes(1)
   })
 })

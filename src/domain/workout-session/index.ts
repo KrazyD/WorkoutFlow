@@ -2,8 +2,11 @@ export {
   completeCurrentExercise,
   completeCurrentRest,
   createActiveWorkoutSession,
+  extendCurrentRest,
   getCurrentStep,
   getNextStep,
+  getRemainingRestSeconds,
+  isRestFinished,
   isWorkoutCompleted,
   startWorkout,
 } from './workout-session'

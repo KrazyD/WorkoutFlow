@@ -165,6 +165,39 @@ export function completeCurrentRest(
   return success(advanceWorkout(session, now))
 }
 
+export function extendCurrentRest(
+  session: ActiveWorkoutSession,
+  durationSeconds: number,
+): OperationResult<RestWorkoutSession> {
+  if (session.status === 'completed') {
+    return failure({ code: 'SESSION_COMPLETED' })
+  }
+
+  if (session.status === 'not_started') {
+    return failure({ code: 'SESSION_NOT_STARTED' })
+  }
+
+  if (session.status !== 'rest') {
+    return failure({ code: 'NOT_REST' })
+  }
+
+  return success({
+    ...session,
+    restEndsAt: session.restEndsAt + durationSeconds * 1_000,
+  })
+}
+
+export function getRemainingRestSeconds(
+  restEndsAt: number,
+  now: number,
+): number {
+  return Math.max(0, Math.ceil((restEndsAt - now) / 1_000))
+}
+
+export function isRestFinished(restEndsAt: number, now: number): boolean {
+  return getRemainingRestSeconds(restEndsAt, now) === 0
+}
+
 export function getCurrentStep(
   session: ActiveWorkoutSession,
 ): WorkoutStep | undefined {

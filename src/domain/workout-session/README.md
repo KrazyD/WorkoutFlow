@@ -9,7 +9,11 @@ storage, clock, or timer dependencies.
   creates an independent `not_started` snapshot.
 - `startWorkout(session, now)` activates the first exercise or rest step.
 - `completeCurrentExercise(session, now)` advances an exercise session.
-- `completeCurrentRest(session, now)` manually advances the active rest step.
+- `completeCurrentRest(session, now)` advances the active rest step for either
+  automatic expiry or manual skipping.
+- `extendCurrentRest(session, seconds)` moves the active deadline forward.
+- `getRemainingRestSeconds(restEndsAt, now)` and
+  `isRestFinished(restEndsAt, now)` derive countdown state from explicit time.
 - `getCurrentStep(session)` returns the active step.
 - `getNextStep(session)` returns the upcoming step. Before start, this is the
   first step; after completion, it is absent.
@@ -23,8 +27,9 @@ are milliseconds since Unix epoch and are always supplied by the caller.
 session deep-copies these values into `templateSnapshot`, so later catalog or
 template edits cannot alter a running workout.
 
-The current product does not run a countdown. `restEndsAt` is retained for a
-future timer but does not prevent the explicit manual rest action.
+`restEndsAt` is the countdown source of truth. The domain calculates and moves
+the deadline but never reads the clock or schedules a browser timer. Remaining
+seconds are derived rather than persisted.
 
 ## States
 

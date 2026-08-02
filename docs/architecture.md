@@ -69,6 +69,10 @@ React renders the application and schedules UI updates. A feature-level adapter
 may read the wall clock or use browser timers, then pass a numeric timestamp to
 the workout-session engine. Persistence occurs outside state-transition
 functions. This separation makes the engine testable with fixed time values.
+During rest, the persisted `restEndsAt` timestamp is the source of truth. React
+uses one browser interval to refresh the current timestamp and derives the
+displayed seconds from the deadline; it does not persist a decreasing counter.
+The interval is cleaned up when the rest screen is left or unmounted.
 
 Rest duration is stored as integer `durationSeconds`. The rest preset feature
 converts the form's minute and second fields to this domain value before calling
@@ -78,6 +82,9 @@ formatting is a pure feature-level function.
 The active-workout feature resolves template references before calling the
 domain engine. React receives repositories through dependency injection and
 commits each domain transition to IndexedDB before rendering the new step.
+An expired restored rest is completed and persisted before the next step is
+shown. A failed completion remains on the rest screen and requires an explicit
+retry rather than starting an automatic retry loop.
 
 ## Deferred decisions
 

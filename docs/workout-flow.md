@@ -16,8 +16,9 @@ reference cannot start and shows a user-facing error.
    `restEndsAt` from the supplied time and snapshot duration.
 5. The UI renders the active step and, when available, the next step.
 6. An exercise advances only after an explicit completion action.
-7. A rest advances after the explicit “finish rest” action. The configured
-   duration remains visible but no countdown runs.
+7. A rest shows a countdown derived from its absolute `restEndsAt` deadline and
+   advances automatically at zero. The user may skip it or extend the deadline
+   by 30 seconds; transitions are persisted before the next step appears.
 8. Advancing past the final step changes status to `completed`.
 
 ## Domain operations
@@ -27,7 +28,10 @@ to expose pure operations equivalent to:
 
 - start a workout from a resolved snapshot and explicit current time;
 - complete the active exercise at an explicit current time;
-- manually complete the active rest at an explicit current time;
+- complete the active rest at an explicit current time, whether requested by
+  the countdown or the user;
+- extend the active rest deadline without mutating the supplied state;
+- calculate remaining seconds and whether a deadline has passed;
 - select the current and next steps without mutating state.
 
 Each operation returns new state. It does not persist data, schedule timers,
@@ -35,16 +39,27 @@ read the clock, or trigger UI effects.
 
 ## Rest timing
 
-`restEndsAt` remains part of domain state for a future countdown, but the
-current feature neither reads it to block the user nor schedules browser
-timers. Rest duration is static until the user finishes the step manually.
+`restEndsAt` is the source of truth for an active rest. It is calculated once
+when the step becomes active from the snapshot duration and the caller's
+current timestamp. The UI recalculates the displayed `MM:SS` value relative to
+that deadline approximately once per second; it neither stores nor persists a
+decreasing counter. Browser timers remain outside the domain.
+
+Skipping rest calls the same domain completion operation as expiry. Adding 30
+seconds moves `restEndsAt` forward and persists the updated session. A guarded
+in-flight transition prevents timer callbacks and repeated clicks from
+advancing twice. If persistence fails at expiry, the current rest remains
+visible with a Russian error and an explicit retry action.
 
 ## Interruption and restoration
 
 One session is persisted in IndexedDB under a fixed key. Reloading the template
 list shows its name, saved step index, and a Continue action. Opening
-`/workout-session` reads the same domain state, so refresh does not reset
-progress. Starting a second template requires an explicit choice to continue
+`/workout-session` reads the same domain state, so refresh continues from the
+persisted deadline rather than restarting the configured duration. If the
+deadline passed while the application was closed or backgrounded, the UI
+immediately completes and persists the rest before showing the next exercise or
+workout completion. Starting a second template requires an explicit choice to continue
 the current session, replace it, or cancel.
 
 ## Invalid actions
