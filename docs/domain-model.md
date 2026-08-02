@@ -16,6 +16,10 @@ A reusable rest definition.
 - `name`: non-empty display name.
 - `durationSeconds`: positive whole number of seconds.
 
+Rest presets accept durations from 5 through 3,600 seconds. Persistence stores
+only `durationSeconds`; minutes and seconds are UI input fields rather than
+additional domain properties.
+
 ## WorkoutTemplate
 
 A reusable workout plan.

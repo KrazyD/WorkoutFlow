@@ -1,15 +1,21 @@
 import Dexie, { type EntityTable } from 'dexie'
 
-import type { Exercise } from '../domain/workout-session'
+import type { Exercise, RestPreset } from '../domain/workout-session'
 
 export class WorkoutFlowDatabase extends Dexie {
   exercises!: EntityTable<Exercise, 'id'>
+  restPresets!: EntityTable<RestPreset, 'id'>
 
-  constructor() {
-    super('workout-flow')
+  constructor(databaseName = 'workout-flow') {
+    super(databaseName)
 
     this.version(1).stores({
       exercises: 'id, name',
+    })
+
+    this.version(2).stores({
+      exercises: 'id, name',
+      restPresets: 'id, name',
     })
   }
 }

@@ -14,6 +14,7 @@ import type {
   ExerciseRepository,
   UpdateExerciseInput,
 } from './features/exercises/exercise-repository'
+import type { RestPresetRepository } from './features/rest-presets/rest-preset-repository'
 
 class InMemoryExerciseRepository implements ExerciseRepository {
   private nextId = 1
@@ -43,6 +44,24 @@ class InMemoryExerciseRepository implements ExerciseRepository {
   }
 }
 
+class EmptyRestPresetRepository implements RestPresetRepository {
+  async getAll() {
+    return []
+  }
+
+  async create(): Promise<never> {
+    throw new Error('Not implemented in this test repository.')
+  }
+
+  async update(): Promise<never> {
+    throw new Error('Not implemented in this test repository.')
+  }
+
+  async remove(): Promise<void> {
+    throw new Error('Not implemented in this test repository.')
+  }
+}
+
 const storedExercise: Exercise = {
   id: 'stored-exercise',
   name: 'Приседания',
@@ -63,6 +82,7 @@ const openCreateForm = () => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  window.history.pushState({}, '', '/')
 })
 
 describe('exercise catalog', () => {
@@ -218,5 +238,21 @@ describe('exercise catalog', () => {
     expect(
       screen.getByRole('heading', { name: 'Новое упражнение' }),
     ).toBeInTheDocument()
+  })
+})
+
+describe('catalog navigation', () => {
+  it('opens the rest preset screen at /rest-presets', async () => {
+    window.history.pushState({}, '', '/rest-presets')
+
+    render(<App restPresetRepository={new EmptyRestPresetRepository()} />)
+
+    expect(
+      await screen.findByRole('heading', { name: 'Отдых', level: 1 }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Упражнения' })).toHaveAttribute(
+      'href',
+      '/exercises',
+    )
   })
 })

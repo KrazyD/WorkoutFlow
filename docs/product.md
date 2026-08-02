@@ -21,9 +21,9 @@ The product will allow a user to:
 
 ## Implementation status
 
-The exercise catalog is implemented: users can create, edit, delete, and
-reload locally stored exercises. The remaining MVP capabilities are not yet
-available in the user interface.
+The exercise and rest preset catalogs are implemented: users can create, edit,
+delete, and reload locally stored entries. The remaining MVP capabilities are
+not yet available in the user interface.
 
 ## Product principles
 
