@@ -6,6 +6,7 @@ import {
   within,
 } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
 
 import type { RestPreset } from '../../domain/workout-session'
 import { createId } from '../../shared/id/createId'
@@ -52,7 +53,12 @@ const storedRestPreset: RestPreset = {
 
 const renderScreen = (
   repository: RestPresetRepository = new InMemoryRestPresetRepository(),
-) => render(<RestPresetsScreen repository={repository} />)
+) =>
+  render(
+    <MemoryRouter initialEntries={['/rest-presets']}>
+      <RestPresetsScreen repository={repository} />
+    </MemoryRouter>,
+  )
 
 const waitForEmptyState = async () => {
   await screen.findByRole('heading', { name: 'Вариантов отдыха пока нет' })

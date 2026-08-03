@@ -14,7 +14,8 @@
   "dependencies": {
     "dexie": "^4.4.4",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
     "@eslint/js": "latest",

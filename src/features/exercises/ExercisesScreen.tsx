@@ -167,7 +167,6 @@ export function ExercisesScreen({ repository }: ExercisesScreenProps) {
 
   return (
     <CatalogPageLayout
-      activePage="exercises"
       title="Упражнения"
       actionLabel="Добавить упражнение"
       onAction={openCreateForm}

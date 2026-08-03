@@ -5,6 +5,7 @@ import {
   useState,
   type FormEvent,
 } from 'react'
+import { Link } from 'react-router-dom'
 
 import type {
   WorkoutTemplateRecord,
@@ -60,7 +61,7 @@ interface WorkoutTemplatesScreenProps {
   readonly exerciseRepository: ExerciseRepository
   readonly restPresetRepository: RestPresetRepository
   readonly activeWorkoutSessionRepository?: ActiveWorkoutSessionRepository
-  readonly navigate?: (path: string) => void
+  readonly navigate: (path: string) => void
   readonly now?: () => number
   readonly feedbackSettingsStore?: WorkoutFeedbackSettingsStore
   readonly audioService?: WorkoutAudioService
@@ -98,7 +99,7 @@ export function WorkoutTemplatesScreen({
   exerciseRepository,
   restPresetRepository,
   activeWorkoutSessionRepository = emptyActiveSessionRepository,
-  navigate = (path) => window.location.assign(path),
+  navigate,
   now = Date.now,
   feedbackSettingsStore = workoutFeedbackSettingsStore,
   audioService = workoutAudioService,
@@ -389,7 +390,6 @@ export function WorkoutTemplatesScreen({
 
   return (
     <CatalogPageLayout
-      activePage="workouts"
       title="Тренировки"
       actionLabel="Создать тренировку"
       onAction={openCreateForm}
@@ -565,12 +565,12 @@ export function WorkoutTemplatesScreen({
                 {exercises.length === 0 ? (
                   <p className="text-sm text-slate-300">
                     Упражнения ещё не созданы.{' '}
-                    <a
-                      href="/exercises"
+                    <Link
+                      to="/exercises"
                       className="font-semibold text-lime-300"
                     >
                       Перейти к упражнениям
-                    </a>
+                    </Link>
                   </p>
                 ) : (
                   <ul className="space-y-2">
@@ -604,12 +604,12 @@ export function WorkoutTemplatesScreen({
                 {restPresets.length === 0 ? (
                   <p className="text-sm text-slate-300">
                     Варианты отдыха ещё не созданы.{' '}
-                    <a
-                      href="/rest-presets"
+                    <Link
+                      to="/rest-presets"
                       className="font-semibold text-lime-300"
                     >
                       Перейти к отдыху
-                    </a>
+                    </Link>
                   </p>
                 ) : (
                   <ul className="space-y-2">

@@ -69,6 +69,10 @@ React renders the application and schedules UI updates. A feature-level adapter
 may read the wall clock or use browser timers, then pass a numeric timestamp to
 the workout-session engine. Persistence occurs outside state-transition
 functions. This separation makes the engine testable with fixed time values.
+React Router owns application routes and browser history. Internal navigation
+uses router links and navigation functions so changing screens does not reload
+the document; production code must not use `window.location` or plain anchor
+elements for internal routes.
 During rest, the persisted `restEndsAt` timestamp is the source of truth. React
 uses one browser interval to refresh the current timestamp and derives the
 displayed seconds from the deadline; it does not persist a decreasing counter.

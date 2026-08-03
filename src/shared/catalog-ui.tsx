@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
+import { NavLink } from 'react-router-dom'
 
 interface CatalogPageLayoutProps {
-  readonly activePage: 'exercises' | 'rest-presets' | 'workouts'
   readonly title: string
   readonly actionLabel: string
   readonly onAction: () => void
@@ -15,7 +15,6 @@ const navigationItems = [
 ] as const
 
 export function CatalogPageLayout({
-  activePage,
   title,
   actionLabel,
   onAction,
@@ -44,24 +43,21 @@ export function CatalogPageLayout({
           </div>
 
           <nav aria-label="Разделы" className="mt-5 flex flex-wrap gap-2">
-            {navigationItems.map((item) => {
-              const isActive = item.id === activePage
-
-              return (
-                <a
-                  key={item.id}
-                  href={item.href}
-                  aria-current={isActive ? 'page' : undefined}
-                  className={`rounded-lg px-3 py-2 text-sm font-medium ${
+            {navigationItems.map((item) => (
+              <NavLink
+                key={item.id}
+                to={item.href}
+                className={({ isActive }) =>
+                  `rounded-lg px-3 py-2 text-sm font-medium ${
                     isActive
                       ? 'bg-slate-800 text-white'
                       : 'text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {item.label}
-                </a>
-              )
-            })}
+                  }`
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
           </nav>
         </header>
 

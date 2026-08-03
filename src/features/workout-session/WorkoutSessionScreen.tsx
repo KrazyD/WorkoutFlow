@@ -241,7 +241,11 @@ export function WorkoutSessionScreen({
       <main className="min-h-dvh bg-slate-950 px-4 py-8 text-slate-50">
         <div className="mx-auto max-w-xl">
           {error ? <RepositoryErrorAlert message={error} /> : null}
-          <button className="mt-6 min-h-11 text-lime-300" onClick={() => navigate('/workouts')}>
+          <button
+            type="button"
+            className="mt-6 min-h-11 text-lime-300"
+            onClick={() => navigate('/workouts')}
+          >
             Вернуться к тренировкам
           </button>
         </div>

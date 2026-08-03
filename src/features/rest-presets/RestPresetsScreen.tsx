@@ -175,7 +175,6 @@ export function RestPresetsScreen({ repository }: RestPresetsScreenProps) {
 
   return (
     <CatalogPageLayout
-      activePage="rest-presets"
       title="Отдых"
       actionLabel="Добавить вариант"
       onAction={openCreateForm}

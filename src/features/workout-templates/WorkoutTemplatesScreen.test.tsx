@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { MemoryRouter } from 'react-router-dom'
 
 import type { WorkoutTemplateRecord } from '../../domain/workout-template'
 import type { ActiveWorkoutSession, Exercise, RestPreset } from '../../domain/workout-session'
@@ -97,12 +98,18 @@ const renderScreen = (
   exercises: Exercise[] = [squat, pushUp],
   presets: RestPreset[] = [rest],
 ) =>
-  render(
+  renderInRouter(
     <WorkoutTemplatesScreen
       repository={repository}
       exerciseRepository={new InMemoryExerciseRepository(exercises)}
       restPresetRepository={new InMemoryRestPresetRepository(presets)}
+      navigate={vi.fn()}
     />,
+  )
+
+const renderInRouter = (ui: React.ReactNode) =>
+  render(
+    <MemoryRouter initialEntries={['/workouts']}>{ui}</MemoryRouter>,
   )
 
 const openCreateForm = async () => {
@@ -200,7 +207,7 @@ describe('starting a workout', () => {
   it('shows Start only for a non-empty template and saves a resolved snapshot', async () => {
     const activeRepository = new InMemoryActiveSessionRepository()
     const navigate = vi.fn()
-    render(
+    renderInRouter(
       <WorkoutTemplatesScreen
         repository={new InMemoryWorkoutTemplateRepository([
           storedTemplate,
@@ -233,7 +240,7 @@ describe('starting a workout', () => {
     vi.spyOn(activeRepository, 'save').mockRejectedValue(new Error('write failed'))
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const navigate = vi.fn()
-    render(
+    renderInRouter(
       <WorkoutTemplatesScreen repository={new InMemoryWorkoutTemplateRepository([storedTemplate])}
         exerciseRepository={new InMemoryExerciseRepository([squat])}
         restPresetRepository={new InMemoryRestPresetRepository([rest])}
@@ -251,7 +258,7 @@ describe('starting a workout', () => {
     }
     const activeRepository = new InMemoryActiveSessionRepository(active)
     const navigate = vi.fn()
-    render(
+    renderInRouter(
       <WorkoutTemplatesScreen repository={new InMemoryWorkoutTemplateRepository([storedTemplate])}
         exerciseRepository={new InMemoryExerciseRepository([squat])}
         restPresetRepository={new InMemoryRestPresetRepository([rest])}
@@ -274,7 +281,7 @@ describe('starting a workout', () => {
       templateSnapshot: { id: 'current', name: 'Текущая', steps: [{ type: 'exercise', exercise: squat }] },
     }
     const activeRepository = new InMemoryActiveSessionRepository(active)
-    render(
+    renderInRouter(
       <WorkoutTemplatesScreen repository={new InMemoryWorkoutTemplateRepository([storedTemplate])}
         exerciseRepository={new InMemoryExerciseRepository([squat])}
         restPresetRepository={new InMemoryRestPresetRepository([rest])}
