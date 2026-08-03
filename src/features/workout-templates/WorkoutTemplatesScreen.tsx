@@ -53,6 +53,7 @@ import {
   workoutVibrationService,
   type WorkoutVibrationService,
 } from '../../shared/vibration/workout-vibration-service'
+import { createId } from '../../shared/id/createId'
 
 interface WorkoutTemplatesScreenProps {
   readonly repository: WorkoutTemplateRepository
@@ -579,7 +580,7 @@ export function WorkoutTemplatesScreen({
                           type="button"
                           onClick={() =>
                             appendStep({
-                              id: crypto.randomUUID(),
+                              id: createId(),
                               type: 'exercise',
                               exerciseId: exercise.id,
                             })
@@ -618,7 +619,7 @@ export function WorkoutTemplatesScreen({
                           type="button"
                           onClick={() =>
                             appendStep({
-                              id: crypto.randomUUID(),
+                              id: createId(),
                               type: 'rest',
                               restPresetId: preset.id,
                             })

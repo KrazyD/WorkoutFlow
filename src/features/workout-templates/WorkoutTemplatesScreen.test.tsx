@@ -130,7 +130,10 @@ const addRest = () => {
   )
 }
 
-afterEach(() => vi.restoreAllMocks())
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
 
 describe('workout template list', () => {
   it('shows an empty state', async () => {
@@ -296,8 +299,18 @@ describe('workout template creation', () => {
     expect(screen.getByText('Добавьте хотя бы один шаг.')).toBeInTheDocument()
   })
 
-  it('adds exercise and rest steps in order and saves the template', async () => {
-    renderScreen()
+  it('adds and saves unique exercise and rest steps without randomUUID', async () => {
+    let randomByte = 0
+    vi.stubGlobal('crypto', {
+      getRandomValues: (array: Uint8Array) => {
+        array.fill(randomByte)
+        randomByte += 1
+        return array
+      },
+    })
+    const repository = new InMemoryWorkoutTemplateRepository()
+    const create = vi.spyOn(repository, 'create')
+    renderScreen(repository)
     await openCreateForm()
     fireEvent.change(screen.getByLabelText('Название тренировки'), {
       target: { value: '  Круговая  ' },
@@ -320,6 +333,10 @@ describe('workout template creation', () => {
       await screen.findByRole('heading', { name: 'Круговая' }),
     ).toBeInTheDocument()
     expect(screen.getByText('2 шага')).toBeInTheDocument()
+    const steps = create.mock.calls[0]?.[0].steps ?? []
+    expect(steps).toHaveLength(2)
+    expect(steps[0]?.id).not.toBe('')
+    expect(steps[1]?.id).not.toBe(steps[0]?.id)
   })
 
   it('shows links when either catalog is empty', async () => {

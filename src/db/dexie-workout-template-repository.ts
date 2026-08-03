@@ -4,6 +4,7 @@ import type {
   UpdateWorkoutTemplateInput,
   WorkoutTemplateRepository,
 } from '../features/workout-templates/workout-template-repository'
+import { createId } from '../shared/id/createId'
 import type { WorkoutFlowDatabase } from './database'
 
 export class WorkoutTemplateNotFoundError extends Error {
@@ -16,7 +17,7 @@ export class WorkoutTemplateNotFoundError extends Error {
 export class DexieWorkoutTemplateRepository implements WorkoutTemplateRepository {
   constructor(
     private readonly database: WorkoutFlowDatabase,
-    private readonly createId: () => string = () => crypto.randomUUID(),
+    private readonly idFactory: () => string = createId,
   ) {}
 
   async getAll(): Promise<WorkoutTemplateRecord[]> {
@@ -30,7 +31,7 @@ export class DexieWorkoutTemplateRepository implements WorkoutTemplateRepository
   async create(
     input: CreateWorkoutTemplateInput,
   ): Promise<WorkoutTemplateRecord> {
-    const workoutTemplate = { id: this.createId(), ...input }
+    const workoutTemplate = { id: this.idFactory(), ...input }
     await this.database.workoutTemplates.add(workoutTemplate)
     return workoutTemplate
   }

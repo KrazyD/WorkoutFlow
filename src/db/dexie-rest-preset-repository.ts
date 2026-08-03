@@ -4,6 +4,7 @@ import type {
   RestPresetRepository,
   UpdateRestPresetInput,
 } from '../features/rest-presets/rest-preset-repository'
+import { createId } from '../shared/id/createId'
 import type { WorkoutFlowDatabase } from './database'
 
 export class RestPresetNotFoundError extends Error {
@@ -16,7 +17,7 @@ export class RestPresetNotFoundError extends Error {
 export class DexieRestPresetRepository implements RestPresetRepository {
   constructor(
     private readonly database: WorkoutFlowDatabase,
-    private readonly createId: () => string = () => crypto.randomUUID(),
+    private readonly idFactory: () => string = createId,
   ) {}
 
   async getAll(): Promise<RestPreset[]> {
@@ -25,7 +26,7 @@ export class DexieRestPresetRepository implements RestPresetRepository {
 
   async create(input: CreateRestPresetInput): Promise<RestPreset> {
     const restPreset: RestPreset = {
-      id: this.createId(),
+      id: this.idFactory(),
       name: input.name,
       durationSeconds: input.durationSeconds,
     }

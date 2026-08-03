@@ -4,6 +4,7 @@ import type {
   ExerciseRepository,
   UpdateExerciseInput,
 } from '../features/exercises/exercise-repository'
+import { createId } from '../shared/id/createId'
 import type { WorkoutFlowDatabase } from './database'
 
 export class ExerciseNotFoundError extends Error {
@@ -16,7 +17,7 @@ export class ExerciseNotFoundError extends Error {
 export class DexieExerciseRepository implements ExerciseRepository {
   constructor(
     private readonly database: WorkoutFlowDatabase,
-    private readonly createId: () => string = () => crypto.randomUUID(),
+    private readonly idFactory: () => string = createId,
   ) {}
 
   async getAll(): Promise<Exercise[]> {
@@ -25,7 +26,7 @@ export class DexieExerciseRepository implements ExerciseRepository {
 
   async create(input: CreateExerciseInput): Promise<Exercise> {
     const exercise: Exercise = {
-      id: this.createId(),
+      id: this.idFactory(),
       name: input.name,
       ...(input.description ? { description: input.description } : {}),
     }

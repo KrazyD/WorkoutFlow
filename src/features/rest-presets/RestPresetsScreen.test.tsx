@@ -8,6 +8,7 @@ import {
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { RestPreset } from '../../domain/workout-session'
+import { createId } from '../../shared/id/createId'
 import { RestPresetsScreen } from './RestPresetsScreen'
 import type {
   CreateRestPresetInput,
@@ -16,8 +17,6 @@ import type {
 } from './rest-preset-repository'
 
 class InMemoryRestPresetRepository implements RestPresetRepository {
-  private nextId = 1
-
   constructor(private restPresets: RestPreset[] = []) {}
 
   async getAll(): Promise<RestPreset[]> {
@@ -25,7 +24,7 @@ class InMemoryRestPresetRepository implements RestPresetRepository {
   }
 
   async create(input: CreateRestPresetInput): Promise<RestPreset> {
-    const restPreset = { id: String(this.nextId++), ...input }
+    const restPreset = { id: createId(), ...input }
     this.restPresets = [...this.restPresets, restPreset]
     return restPreset
   }
@@ -74,6 +73,7 @@ const setDuration = (minutes: string, seconds: string) => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe('rest preset catalog', () => {
@@ -165,8 +165,11 @@ describe('rest preset catalog', () => {
     ).toBeInTheDocument()
   })
 
-  it('creates a valid rest preset and shows it in the list', async () => {
-    renderScreen()
+  it('creates a valid rest preset and shows it without randomUUID', async () => {
+    vi.stubGlobal('crypto', {})
+    const repository = new InMemoryRestPresetRepository()
+    const create = vi.spyOn(repository, 'create')
+    renderScreen(repository)
     await waitForEmptyState()
     openCreateForm()
     fireEvent.change(screen.getByLabelText('Название'), {
@@ -180,6 +183,7 @@ describe('rest preset catalog', () => {
       await screen.findByRole('heading', { name: 'Обычный' }),
     ).toBeInTheDocument()
     expect(screen.getByText('1 минута 30 секунд')).toBeInTheDocument()
+    expect((await create.mock.results[0]?.value)?.id).not.toBe('')
   })
 
   it('formats 90 seconds as one minute and thirty seconds', async () => {

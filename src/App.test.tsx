@@ -15,10 +15,9 @@ import type {
   UpdateExerciseInput,
 } from './features/exercises/exercise-repository'
 import type { RestPresetRepository } from './features/rest-presets/rest-preset-repository'
+import { createId } from './shared/id/createId'
 
 class InMemoryExerciseRepository implements ExerciseRepository {
-  private nextId = 1
-
   constructor(private exercises: Exercise[] = []) {}
 
   async getAll(): Promise<Exercise[]> {
@@ -26,7 +25,7 @@ class InMemoryExerciseRepository implements ExerciseRepository {
   }
 
   async create(input: CreateExerciseInput): Promise<Exercise> {
-    const exercise = { id: String(this.nextId++), ...input }
+    const exercise = { id: createId(), ...input }
     this.exercises = [...this.exercises, exercise]
     return exercise
   }
@@ -82,6 +81,7 @@ const openCreateForm = () => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   window.history.pushState({}, '', '/')
 })
 
@@ -122,8 +122,11 @@ describe('exercise catalog', () => {
     expect(createSpy).not.toHaveBeenCalled()
   })
 
-  it('creates a valid exercise and shows it in the list', async () => {
-    renderApp()
+  it('creates a valid exercise and shows it without randomUUID', async () => {
+    vi.stubGlobal('crypto', {})
+    const repository = new InMemoryExerciseRepository()
+    const create = vi.spyOn(repository, 'create')
+    renderApp(repository)
     await waitForLoadedScreen()
     openCreateForm()
 
@@ -142,6 +145,7 @@ describe('exercise catalog', () => {
     expect(
       screen.queryByRole('heading', { name: 'Новое упражнение' }),
     ).not.toBeInTheDocument()
+    expect((await create.mock.results[0]?.value)?.id).not.toBe('')
   })
 
   it('edits an existing exercise', async () => {
