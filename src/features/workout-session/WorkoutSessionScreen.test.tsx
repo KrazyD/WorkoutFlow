@@ -10,6 +10,8 @@ import {
 } from '../../domain/workout-session'
 import { WorkoutSessionScreen } from './WorkoutSessionScreen'
 import type { ActiveWorkoutSessionRepository } from './active-workout-session-repository'
+import type { WorkoutAudioService } from '../../shared/audio/workout-audio-service'
+import type { WorkoutVibrationService } from '../../shared/vibration/workout-vibration-service'
 
 const template: WorkoutTemplate = {
   id: 'legs',
@@ -267,5 +269,77 @@ describe('rest countdown', () => {
 
     rendered.unmount()
     expect(clearIntervalSpy).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('rest-finished feedback', () => {
+  const restingRepository = (restEndsAt: number, steps = template.steps) => {
+    const customTemplate = { ...template, steps }
+    const session = valueOf(startWorkout(valueOf(createActiveWorkoutSession(customTemplate)), 1_000))
+    return new MemoryRepository({ ...session, status: 'rest', currentStepIndex: 1, restEndsAt })
+  }
+
+  const services = (settings = { soundEnabled: true, vibrationEnabled: true }) => {
+    const audioService: WorkoutAudioService = {
+      isSupported: () => true,
+      prepare: vi.fn(async () => ({ success: true })),
+      playRestFinishedSignal: vi.fn(async () => ({ success: true })),
+    }
+    const vibrationService: WorkoutVibrationService = {
+      isSupported: () => true,
+      vibrateRestFinished: vi.fn(() => true),
+    }
+    const marked = new Set<string>()
+    return {
+      audioService,
+      vibrationService,
+      feedbackSettingsStore: { load: () => settings, save: vi.fn() },
+      feedbackDeduplicator: { markOnce: (key: string) => marked.has(key) ? false : Boolean(marked.add(key)) },
+    }
+  }
+
+  it('plays sound and vibrates once before the existing natural transition', async () => {
+    const feedback = services()
+    const repository = restingRepository(1_000)
+    const update = vi.spyOn(repository, 'update')
+    render(<WorkoutSessionScreen repository={repository} navigate={vi.fn()} now={() => 2_000} {...feedback} />)
+    expect(await screen.findByText('Шаг 3 из 3')).toBeInTheDocument()
+    expect(feedback.audioService.playRestFinishedSignal).toHaveBeenCalledOnce()
+    expect(feedback.vibrationService.vibrateRestFinished).toHaveBeenCalledOnce()
+    expect(update).toHaveBeenCalledOnce()
+  })
+
+  it('does not call disabled feedback or feedback on manual skip', async () => {
+    const disabled = services({ soundEnabled: false, vibrationEnabled: false })
+    render(<WorkoutSessionScreen repository={restingRepository(1_000)} navigate={vi.fn()} now={() => 2_000} {...disabled} />)
+    await screen.findByText('Шаг 3 из 3')
+    expect(disabled.audioService.playRestFinishedSignal).not.toHaveBeenCalled()
+    expect(disabled.vibrationService.vibrateRestFinished).not.toHaveBeenCalled()
+
+    const manual = services()
+    render(<WorkoutSessionScreen repository={restingRepository(10_000)} navigate={vi.fn()} now={() => 2_000} {...manual} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Пропустить отдых' }))
+    await waitFor(() => expect(manual.audioService.playRestFinishedSignal).not.toHaveBeenCalled())
+    expect(manual.vibrationService.vibrateRestFinished).not.toHaveBeenCalled()
+  })
+
+  it('does not repeat feedback when saving fails and the user retries', async () => {
+    const feedback = services()
+    const repository = restingRepository(1_000)
+    vi.spyOn(repository, 'update').mockRejectedValueOnce(new Error('write failed'))
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    render(<WorkoutSessionScreen repository={repository} navigate={vi.fn()} now={() => 2_000} {...feedback} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByText('Шаг 3 из 3')).toBeInTheDocument()
+    expect(feedback.audioService.playRestFinishedSignal).toHaveBeenCalledOnce()
+    expect(feedback.vibrationService.vibrateRestFinished).toHaveBeenCalledOnce()
+  })
+
+  it('silently advances a restored rest older than five seconds', async () => {
+    const feedback = services()
+    render(<WorkoutSessionScreen repository={restingRepository(1_000)} navigate={vi.fn()} now={() => 7_001} {...feedback} />)
+    expect(await screen.findByText('Шаг 3 из 3')).toBeInTheDocument()
+    expect(feedback.audioService.playRestFinishedSignal).not.toHaveBeenCalled()
+    expect(feedback.vibrationService.vibrateRestFinished).not.toHaveBeenCalled()
   })
 })

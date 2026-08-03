@@ -40,6 +40,19 @@ import {
   removeStep,
 } from './workout-step-list'
 import type { ActiveWorkoutSessionRepository } from '../workout-session/active-workout-session-repository'
+import { WorkoutFeedbackSettingsPanel } from '../workout-feedback/WorkoutFeedbackSettingsPanel'
+import {
+  workoutFeedbackSettingsStore,
+  type WorkoutFeedbackSettingsStore,
+} from '../workout-feedback/workout-feedback-settings'
+import {
+  workoutAudioService,
+  type WorkoutAudioService,
+} from '../../shared/audio/workout-audio-service'
+import {
+  workoutVibrationService,
+  type WorkoutVibrationService,
+} from '../../shared/vibration/workout-vibration-service'
 
 interface WorkoutTemplatesScreenProps {
   readonly repository: WorkoutTemplateRepository
@@ -48,6 +61,9 @@ interface WorkoutTemplatesScreenProps {
   readonly activeWorkoutSessionRepository?: ActiveWorkoutSessionRepository
   readonly navigate?: (path: string) => void
   readonly now?: () => number
+  readonly feedbackSettingsStore?: WorkoutFeedbackSettingsStore
+  readonly audioService?: WorkoutAudioService
+  readonly vibrationService?: WorkoutVibrationService
 }
 
 const emptyActiveSessionRepository: ActiveWorkoutSessionRepository = {
@@ -83,6 +99,9 @@ export function WorkoutTemplatesScreen({
   activeWorkoutSessionRepository = emptyActiveSessionRepository,
   navigate = (path) => window.location.assign(path),
   now = Date.now,
+  feedbackSettingsStore = workoutFeedbackSettingsStore,
+  audioService = workoutAudioService,
+  vibrationService = workoutVibrationService,
 }: WorkoutTemplatesScreenProps) {
   const [templates, setTemplates] = useState<WorkoutTemplateRecord[]>([])
   const [exercises, setExercises] = useState<Exercise[]>([])
@@ -100,6 +119,8 @@ export function WorkoutTemplatesScreen({
   const [activeSession, setActiveSession] = useState<ActiveWorkoutSession>()
   const [templateToStart, setTemplateToStart] =
     useState<WorkoutTemplateRecord | null>(null)
+  const [feedbackSettings, setFeedbackSettings] = useState(() => feedbackSettingsStore.load())
+  const [audioWarning, setAudioWarning] = useState(false)
 
   const exerciseById = useMemo(
     () => new Map(exercises.map((exercise) => [exercise.id, exercise])),
@@ -316,6 +337,10 @@ export function WorkoutTemplatesScreen({
   }
 
   const startTemplate = async (template: WorkoutTemplateRecord) => {
+    if (feedbackSettings.soundEnabled) {
+      const audioPrepared = await audioService.prepare()
+      setAudioWarning(!audioPrepared.success)
+    }
     const snapshot = resolveTemplateSnapshot(template)
     if (!snapshot) {
       setRepositoryError('Не удалось начать тренировку: один из шагов удалён из справочника.')
@@ -371,6 +396,16 @@ export function WorkoutTemplatesScreen({
       {repositoryError ? (
         <RepositoryErrorAlert message={repositoryError} />
       ) : null}
+
+      {audioWarning ? <p role="status" className="mt-4 text-sm text-amber-300">Браузер может не воспроизвести сигнал автоматически.</p> : null}
+
+      <WorkoutFeedbackSettingsPanel
+        settings={feedbackSettings}
+        onChange={setFeedbackSettings}
+        store={feedbackSettingsStore}
+        audioService={audioService}
+        vibrationService={vibrationService}
+      />
 
       {activeSession && activeSession.status !== 'completed' ? (
         <section className="mt-6 rounded-2xl border border-lime-900 bg-lime-950/30 p-5" aria-label="Незавершённая тренировка">

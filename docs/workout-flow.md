@@ -51,6 +51,19 @@ in-flight transition prevents timer callbacks and repeated clicks from
 advancing twice. If persistence fails at expiry, the current rest remains
 visible with a Russian error and an explicit retry action.
 
+Only natural countdown expiry attempts rest-finished feedback. The application
+marks the template, session start time, step index, and `restEndsAt` combination
+before starting sound and vibration, then uses the existing rest completion and
+persistence path. This prevents interval callbacks, React Strict Mode, and a
+save retry from repeating feedback. Manual skip and workout exit are silent.
+
+Sound is a short synthesized Web Audio signal. Because mobile browsers may
+require a user gesture, the application attempts to prepare the shared
+`AudioContext` from Start and from the sound-preview button. Vibration is a
+feature-detected `[200, 100, 200]` pattern. Either API may be missing, blocked,
+or suppressed in a background tab; this is not a workout error and background
+notification is not guaranteed.
+
 ## Interruption and restoration
 
 One session is persisted in IndexedDB under a fixed key. Reloading the template
@@ -59,7 +72,9 @@ list shows its name, saved step index, and a Continue action. Opening
 persisted deadline rather than restarting the configured duration. If the
 deadline passed while the application was closed or backgrounded, the UI
 immediately completes and persists the rest before showing the next exercise or
-workout completion. Starting a second template requires an explicit choice to continue
+workout completion. Feedback is attempted only when an expired restored rest is
+at most 5 seconds late; older feedback is discarded while the transition still
+completes. Starting a second template requires an explicit choice to continue
 the current session, replace it, or cancel.
 
 ## Invalid actions

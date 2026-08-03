@@ -25,6 +25,10 @@ The catalogs, workout template editor, and timed active-workout flow are
 implemented. An unfinished workout, including an active rest deadline, is
 restored from local storage.
 
+The workout list includes local sound and vibration preferences plus preview
+controls. These best-effort alerts apply only to natural rest expiry; browser
+support and background delivery are not guaranteed.
+
 ## Product principles
 
 - Mobile-first: the primary use happens on a phone during a workout.

@@ -15,12 +15,34 @@ import { RepositoryErrorAlert } from '../../shared/catalog-ui'
 import { formatRestDuration } from '../rest-presets/rest-duration'
 import type { ActiveWorkoutSessionRepository } from './active-workout-session-repository'
 import { formatCountdown } from './countdown'
+import {
+  workoutAudioService,
+  type WorkoutAudioService,
+} from '../../shared/audio/workout-audio-service'
+import {
+  workoutVibrationService,
+  type WorkoutVibrationService,
+} from '../../shared/vibration/workout-vibration-service'
+import {
+  workoutFeedbackSettingsStore,
+  type WorkoutFeedbackSettingsStore,
+} from '../workout-feedback/workout-feedback-settings'
+import {
+  restFeedbackDeduplicator,
+  type RestFeedbackDeduplicator,
+} from '../workout-feedback/rest-feedback-deduplicator'
 
 interface WorkoutSessionScreenProps {
   readonly repository: ActiveWorkoutSessionRepository
   readonly navigate: (path: string) => void
   readonly now?: () => number
+  readonly audioService?: WorkoutAudioService
+  readonly vibrationService?: WorkoutVibrationService
+  readonly feedbackSettingsStore?: WorkoutFeedbackSettingsStore
+  readonly feedbackDeduplicator?: RestFeedbackDeduplicator
 }
+
+export const RESTORED_REST_FEEDBACK_MAX_LATENESS_MS = 5_000
 
 const stepName = (step: WorkoutStep): string =>
   step.type === 'exercise'
@@ -31,6 +53,10 @@ export function WorkoutSessionScreen({
   repository,
   navigate,
   now = Date.now,
+  audioService = workoutAudioService,
+  vibrationService = workoutVibrationService,
+  feedbackSettingsStore = workoutFeedbackSettingsStore,
+  feedbackDeduplicator = restFeedbackDeduplicator,
 }: WorkoutSessionScreenProps) {
   const [session, setSession] = useState<ActiveWorkoutSession>()
   const [isLoading, setIsLoading] = useState(true)
@@ -40,6 +66,7 @@ export function WorkoutSessionScreen({
   const [restCompletionFailed, setRestCompletionFailed] = useState(false)
   const [currentTime, setCurrentTime] = useState(() => now())
   const transitionInFlight = useRef(false)
+  const mountedAt = useRef(now())
   const activeRestEndsAt = session?.status === 'rest' ? session.restEndsAt : undefined
 
   const reportError = useCallback((cause: unknown, message: string) => {
@@ -123,6 +150,22 @@ export function WorkoutSessionScreen({
     void persistTransition(session, session.status)
   }
 
+  const tryRestFinishedFeedback = useCallback((sourceSession: Extract<ActiveWorkoutSession, { status: 'rest' }>, detectedAt: number) => {
+    const lateness = detectedAt - sourceSession.restEndsAt
+    if (lateness > RESTORED_REST_FEEDBACK_MAX_LATENESS_MS) return
+    const key = `${sourceSession.templateSnapshot.id}:${sourceSession.startedAt}:${sourceSession.currentStepIndex}:${sourceSession.restEndsAt}`
+    if (!feedbackDeduplicator.markOnce(key)) return
+
+    const settings = feedbackSettingsStore.load()
+    if (settings.soundEnabled) {
+      void audioService.playRestFinishedSignal().then((result) => {
+        if (!result.success) console.warn('Rest-finished sound was unavailable.', result.error)
+      })
+    }
+    if (settings.vibrationEnabled && !vibrationService.vibrateRestFinished())
+      console.info('Rest-finished vibration was unavailable.')
+  }, [audioService, feedbackDeduplicator, feedbackSettingsStore, vibrationService])
+
   useEffect(() => {
     if (session?.status !== 'rest' || transitionInFlight.current) return
 
@@ -144,9 +187,14 @@ export function WorkoutSessionScreen({
       !restCompletionFailed &&
       !transitionInFlight.current
     ) {
+      const detectedAt = currentTime
+      // A restored deadline is only announced when it is still fresh. A live timer
+      // uses the same path and key, so Strict Mode and retries cannot repeat it.
+      if (detectedAt >= mountedAt.current || detectedAt - session.restEndsAt <= RESTORED_REST_FEEDBACK_MAX_LATENESS_MS)
+        tryRestFinishedFeedback(session, detectedAt)
       void persistTransition(session, 'rest')
     }
-  }, [currentTime, persistTransition, restCompletionFailed, session])
+  }, [currentTime, persistTransition, restCompletionFailed, session, tryRestFinishedFeedback])
 
   const extendRest = async () => {
     if (session?.status !== 'rest' || transitionInFlight.current) return

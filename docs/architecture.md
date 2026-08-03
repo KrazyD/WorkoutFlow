@@ -79,6 +79,15 @@ converts the form's minute and second fields to this domain value before calling
 the repository and decomposes it when editing. Human-readable Russian duration
 formatting is a pure feature-level function.
 
+Rest-finished feedback is an application-edge side effect rather than a domain
+operation. Feedback preferences are stored separately from workout entities in
+`localStorage` under `workout-flow.feedback-settings.v1`. A shared audio service
+keeps one lazy `AudioContext` and synthesizes a short two-tone signal with the
+Web Audio API; explicit Start and sound-preview button presses attempt to
+prepare or resume it. Vibration uses capability detection for
+`navigator.vibrate`. Unsupported or blocked feedback never prevents the
+existing rest transition or its persistence.
+
 The active-workout feature resolves template references before calling the
 domain engine. React receives repositories through dependency injection and
 commits each domain transition to IndexedDB before rendering the new step.
