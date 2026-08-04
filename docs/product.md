@@ -29,6 +29,12 @@ The workout list includes local sound and vibration preferences plus preview
 controls. These best-effort alerts apply only to natural rest expiry; browser
 support and background delivery are not guaranteed.
 
+The data screen can export exercises, rest presets, workout templates, and
+feedback preferences to one JSON backup and restore them later. Restore is an
+explicit full replacement: the user reviews entity counts and confirms before
+any persisted workout data changes. An unfinished active workout blocks the
+restore and is never included in a backup.
+
 ## Product principles
 
 - Mobile-first: the primary use happens on a phone during a workout.

@@ -4,6 +4,7 @@ import {
   exerciseRepository as defaultExerciseRepository,
   restPresetRepository as defaultRestPresetRepository,
   workoutTemplateRepository as defaultWorkoutTemplateRepository,
+  workoutDataBackupService as defaultWorkoutDataBackupService,
 } from './db'
 import { ExercisesScreen } from './features/exercises/ExercisesScreen'
 import type { ExerciseRepository } from './features/exercises/exercise-repository'
@@ -13,12 +14,15 @@ import { WorkoutTemplatesScreen } from './features/workout-templates/WorkoutTemp
 import type { WorkoutTemplateRepository } from './features/workout-templates/workout-template-repository'
 import { WorkoutSessionScreen } from './features/workout-session/WorkoutSessionScreen'
 import type { ActiveWorkoutSessionRepository } from './features/workout-session/active-workout-session-repository'
+import { DataBackupScreen } from './features/data-backup/DataBackupScreen'
+import type { WorkoutDataBackupService } from './features/data-backup/workout-data-backup'
 
 interface AppProps {
   readonly exerciseRepository?: ExerciseRepository
   readonly restPresetRepository?: RestPresetRepository
   readonly workoutTemplateRepository?: WorkoutTemplateRepository
   readonly activeWorkoutSessionRepository?: ActiveWorkoutSessionRepository
+  readonly workoutDataBackupService?: WorkoutDataBackupService
 }
 
 export function App({
@@ -26,6 +30,7 @@ export function App({
   restPresetRepository = defaultRestPresetRepository,
   workoutTemplateRepository = defaultWorkoutTemplateRepository,
   activeWorkoutSessionRepository = defaultActiveWorkoutSessionRepository,
+  workoutDataBackupService = defaultWorkoutDataBackupService,
 }: AppProps) {
   const navigate = useNavigate()
 
@@ -51,6 +56,10 @@ export function App({
             navigate={navigate}
           />
         }
+      />
+      <Route
+        path="/settings/data"
+        element={<DataBackupScreen service={workoutDataBackupService} />}
       />
       <Route
         path="/workout-session"

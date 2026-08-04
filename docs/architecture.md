@@ -92,6 +92,65 @@ prepare or resume it. Vibration uses capability detection for
 `navigator.vibrate`. Unsupported or blocked feedback never prevents the
 existing rest transition or its persistence.
 
+### Data backup
+
+`src/features/data-backup` owns the versioned backup contract, validation,
+download behavior, and the data-screen workflow. `src/db` provides the Dexie
+implementation. Backup format v1 has this exact top-level shape:
+
+```ts
+type WorkoutFlowExportV1 = {
+  format: 'workout-flow-export'
+  version: 1
+  exportedAt: string // ISO timestamp
+  data: {
+    exercises: Exercise[]
+    restPresets: RestPreset[]
+    workoutTemplates: WorkoutTemplateRecord[]
+    feedbackSettings: { soundEnabled: boolean; vibrationEnabled: boolean }
+  }
+}
+```
+
+All imported JSON is parsed as untrusted input and rebuilt through strict Zod
+schemas. Validation applies production field limits, discriminates workout
+steps, rejects duplicate entity and step IDs, and checks every catalog
+reference. Only the known format and version 1 are accepted. A later version
+can be selected before its version-specific schema; v1 has no migration
+framework because none is needed yet.
+
+Restore uses full replacement, not merge. One Dexie transaction clears
+templates, rest presets, and exercises, then adds exercises, rest presets, and
+templates in dependency order. A failure rolls back all IndexedDB changes.
+Feedback settings are saved only after that transaction commits, with a
+best-effort rollback to their previous value if saving fails. This is not a
+distributed transaction: an unexpected settings-storage failure can occur
+after workout entities have committed. Active workout sessions, timer state,
+form/UI state, caches, and diagnostics are neither exported nor modified.
+
+Example without personal data:
+
+```json
+{
+  "format": "workout-flow-export",
+  "version": 1,
+  "exportedAt": "2026-08-05T12:00:00.000Z",
+  "data": {
+    "exercises": [{ "id": "exercise-1", "name": "Пример упражнения" }],
+    "restPresets": [{ "id": "rest-1", "name": "Обычный", "durationSeconds": 90 }],
+    "workoutTemplates": [{
+      "id": "workout-1",
+      "name": "Пример тренировки",
+      "steps": [
+        { "id": "step-1", "type": "exercise", "exerciseId": "exercise-1" },
+        { "id": "step-2", "type": "rest", "restPresetId": "rest-1" }
+      ]
+    }],
+    "feedbackSettings": { "soundEnabled": true, "vibrationEnabled": true }
+  }
+}
+```
+
 The active-workout feature resolves template references before calling the
 domain engine. React receives repositories through dependency injection and
 commits each domain transition to IndexedDB before rendering the new step.

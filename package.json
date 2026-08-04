@@ -15,7 +15,8 @@
     "dexie": "^4.4.4",
     "react": "latest",
     "react-dom": "latest",
-    "react-router-dom": "^7.18.2"
+    "react-router-dom": "^7.18.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "latest",
@@ -30,6 +31,7 @@
     "eslint-config-prettier": "latest",
     "eslint-plugin-react-hooks": "latest",
     "eslint-plugin-react-refresh": "latest",
+    "fake-indexeddb": "^6.2.5",
     "globals": "latest",
     "jsdom": "latest",
     "prettier": "latest",

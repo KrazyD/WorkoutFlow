@@ -12,6 +12,7 @@ const navigationItems = [
   { id: 'exercises', href: '/exercises', label: 'Упражнения' },
   { id: 'rest-presets', href: '/rest-presets', label: 'Отдых' },
   { id: 'workouts', href: '/workouts', label: 'Тренировки' },
+  { id: 'data', href: '/settings/data', label: 'Данные' },
 ] as const
 
 export function CatalogPageLayout({
