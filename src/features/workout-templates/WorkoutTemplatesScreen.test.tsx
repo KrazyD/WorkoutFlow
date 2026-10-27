@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 
@@ -78,6 +78,7 @@ class InMemoryActiveSessionRepository implements ActiveWorkoutSessionRepository 
   async save(session: ActiveWorkoutSession) { this.session = session }
   async update(session: ActiveWorkoutSession) { this.session = session }
   async complete(session: ActiveWorkoutSession) { this.session = session }
+  async updateExerciseWeight() {}
   async clear() { this.session = undefined }
 }
 
@@ -139,6 +140,7 @@ const addRest = () => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   vi.unstubAllGlobals()
 })
 
@@ -230,7 +232,7 @@ describe('starting a workout', () => {
       templateSnapshot: { id: 'legs', name: 'Тренировка ног' },
     })
     expect(activeRepository.session?.templateSnapshot.steps[0]).toEqual({
-      type: 'exercise', exercise: { id: 'squat', name: 'Приседания' },
+      type: 'exercise', exercise: { id: 'squat', name: 'Приседания' }, set: { seriesId: 'step-squat', number: 1, total: 1 },
     })
     expect(navigate).toHaveBeenCalledWith('/workout-session')
   })
@@ -476,4 +478,64 @@ describe('workout template editing', () => {
       within(sequence).queryByText('Удалённое упражнение'),
     ).not.toBeInTheDocument()
   })
+})
+
+describe('series editor', () => {
+  it.each(['Отмена', 'Сохранить'])('hides only the edited template and restores it after %s', async (action) => {
+    const repository = new InMemoryWorkoutTemplateRepository([storedTemplate, { ...storedTemplate, id: 'other', name: 'Другая' }])
+    renderScreen(repository)
+    const list = await screen.findByRole('region', { name: 'Список тренировок' })
+    await screen.findByRole('heading', { name: storedTemplate.name })
+    fireEvent.click(within(within(list).getAllByRole('listitem')[0]!).getByRole('button', { name: 'Изменить' }))
+    await screen.findByRole('heading', { name: 'Изменить тренировку' })
+    expect(within(list).queryByText(storedTemplate.name)).not.toBeInTheDocument()
+    expect(within(list).getByText('Другая')).toBeInTheDocument()
+    expect(screen.queryByText('Тренировок пока нет')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: action }))
+    expect(await within(list).findByText(storedTemplate.name)).toBeInTheDocument()
+    expect(await repository.getById(storedTemplate.id)).toBeDefined()
+  })
+
+  it('creates an alternating block with independent set counts and rest', async () => {
+    const repository = new InMemoryWorkoutTemplateRepository()
+    renderScreen(repository)
+    await screen.findByText('Тренировок пока нет')
+    fireEvent.click(screen.getByRole('button', { name: 'Создать тренировку' }))
+    fireEvent.change(screen.getByLabelText('Название тренировки'), { target: { value: 'Суперсет' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить суперсет' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить в суперсет' }))
+    fireEvent.click(screen.getByRole('button', { name: squat.name }))
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить в суперсет' }))
+    fireEvent.click(screen.getByRole('button', { name: pushUp.name }))
+    fireEvent.change(screen.getByLabelText(`Подходы — ${squat.name}`), { target: { value: '3' } })
+    fireEvent.change(screen.getByLabelText(`Подходы — ${pushUp.name}`), { target: { value: '2' } })
+    fireEvent.change(screen.getByLabelText('Отдых между подходами / упражнениями'), { target: { value: rest.id } })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+    await screen.findByRole('button', { name: 'Начать' })
+    expect((await repository.getAll())[0]?.steps).toEqual([expect.objectContaining({ type: 'superset', restPresetId: rest.id, series: [
+      expect.objectContaining({ exerciseId: squat.id, setCount: 3 }), expect.objectContaining({ exerciseId: pushUp.id, setCount: 2 }),
+    ] })])
+  })
+})
+
+it.each(['create', 'edit'])('scrolls to Save in %s mode', async (mode) => {
+  let notify: IntersectionObserverCallback = () => undefined
+  const observe = vi.fn()
+  vi.stubGlobal('IntersectionObserver', class {
+    constructor(callback: IntersectionObserverCallback) { notify = callback }
+    observe = observe
+    disconnect = vi.fn()
+  })
+  renderScreen(new InMemoryWorkoutTemplateRepository([storedTemplate]))
+  await screen.findByRole('heading', { name: storedTemplate.name })
+  fireEvent.click(screen.getByRole('button', { name: mode === 'create' ? 'Создать тренировку' : 'Изменить' }))
+  const save = await screen.findByRole('button', { name: 'Сохранить' })
+  const scroll = vi.fn()
+  save.scrollIntoView = scroll
+  expect(observe).toHaveBeenCalledWith(save)
+  act(() => notify([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver))
+  fireEvent.click(screen.getByRole('button', { name: 'Прокрутить к сохранению' }))
+  expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
+  act(() => notify([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver))
+  expect(screen.queryByRole('button', { name: 'Прокрутить к сохранению' })).not.toBeInTheDocument()
 })

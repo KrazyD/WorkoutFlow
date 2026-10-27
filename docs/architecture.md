@@ -45,7 +45,10 @@ adapter. Schema version 1 introduced `exercises`; version 2 added
 `restPresets`; version 3 added `workoutTemplates`; version 4 retains those
 tables and adds `activeWorkoutSessions`. The active-session repository uses the
 fixed `active` primary key, so at most one current session can exist. Workout
-template steps store catalog identifiers rather than embedded catalog records.
+template blocks and series store catalog identifiers rather than embedded catalog records.
+New series and weight properties require no new tables or indexes, so schema
+version 4 is retained and no existing records are deleted. The domain resolver
+expands explicit series/supersets into the existing session engine input.
 Later schema changes must use additional Dexie versions and explicit migrations
 when records need transformation.
 
@@ -96,60 +99,21 @@ existing rest transition or its persistence.
 
 `src/features/data-backup` owns the versioned backup contract, validation,
 download behavior, and the data-screen workflow. `src/db` provides the Dexie
-implementation. Backup format v1 has this exact top-level shape:
+implementation. Backup format v2 contains `format: 'workout-flow-export'`,
+`version: 2`, an ISO `exportedAt`, and `data` with `exercises`, `restPresets`,
+`workoutTemplates` and `feedbackSettings`. Exercises include latest weights;
+templates include series counts, group structure, stable IDs and references.
+Active sessions are never exported or imported. Version 1 files are rejected.
 
-```ts
-type WorkoutFlowExportV1 = {
-  format: 'workout-flow-export'
-  version: 1
-  exportedAt: string // ISO timestamp
-  data: {
-    exercises: Exercise[]
-    restPresets: RestPreset[]
-    workoutTemplates: WorkoutTemplateRecord[]
-    feedbackSettings: { soundEnabled: boolean; vibrationEnabled: boolean }
-  }
-}
-```
-
-All imported JSON is parsed as untrusted input and rebuilt through strict Zod
-schemas. Validation applies production field limits, discriminates workout
-steps, rejects duplicate entity and step IDs, and checks every catalog
-reference. Only the known format and version 1 are accepted. A later version
-can be selected before its version-specific schema; v1 has no migration
-framework because none is needed yet.
-
-Restore uses full replacement, not merge. One Dexie transaction clears
-templates, rest presets, and exercises, then adds exercises, rest presets, and
-templates in dependency order. A failure rolls back all IndexedDB changes.
-Feedback settings are saved only after that transaction commits, with a
-best-effort rollback to their previous value if saving fails. This is not a
-distributed transaction: an unexpected settings-storage failure can occur
-after workout entities have committed. Active workout sessions, timer state,
-form/UI state, caches, and diagnostics are neither exported nor modified.
-
-Example without personal data:
-
-```json
-{
-  "format": "workout-flow-export",
-  "version": 1,
-  "exportedAt": "2026-08-05T12:00:00.000Z",
-  "data": {
-    "exercises": [{ "id": "exercise-1", "name": "Пример упражнения" }],
-    "restPresets": [{ "id": "rest-1", "name": "Обычный", "durationSeconds": 90 }],
-    "workoutTemplates": [{
-      "id": "workout-1",
-      "name": "Пример тренировки",
-      "steps": [
-        { "id": "step-1", "type": "exercise", "exerciseId": "exercise-1" },
-        { "id": "step-2", "type": "rest", "restPresetId": "rest-1" }
-      ]
-    }],
-    "feedbackSettings": { "soundEnabled": true, "vibrationEnabled": true }
-  }
-}
-```
+Strict Zod validation runs before any database mutation, including when the
+service is called directly. It rejects invalid weights/counts, duplicate IDs
+(including nested series), unknown fields and missing catalog references.
+Restore replaces all three catalog tables in one Dexie transaction and locks
+the active-session table, rejecting any existing session. A database failure
+rolls back every table. Settings are saved before transaction completion; a
+settings write failure aborts the database transaction. If a later database
+commit fails, settings are restored on a best-effort basis. IndexedDB and
+localStorage cannot provide crash-atomicity across the two browser stores.
 
 The active-workout feature resolves template references before calling the
 domain engine. React receives repositories through dependency injection and
@@ -160,6 +124,16 @@ retry rather than starting an automatic retry loop.
 
 ## Deferred decisions
 
-The project deliberately has no form library, schema validator, component kit,
-end-to-end test runner, PWA plugin, or state manager. Each choice should follow
+The project deliberately has no form library, component kit,
+end-to-end test runner or state manager. Each choice should follow
 a concrete requirement rather than precede it.
+
+## PWA application edge
+
+The production build uses vite-plugin-pwa generateSW and prompt-based updates.
+`src/features/pwa` owns update consent and notices; `src/db/pwa-workout-guard.ts`
+observes persisted session activity without changing repositories. Both worker
+activation and page reload require user consent and a fresh inactivity check.
+Workbox precaches build resources and provides the SPA navigation fallback;
+Dexie remains responsible for user data. See [PWA](pwa.md) for lifecycle details,
+iPhone storage behavior, serving guidance and manual acceptance checks.

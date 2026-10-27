@@ -7,7 +7,7 @@ import {
   MAX_IMPORT_FILE_SIZE_BYTES,
   downloadWorkoutFlowExport,
   type WorkoutDataBackupService,
-  type WorkoutFlowExportV1,
+  type WorkoutFlowExportV2,
 } from './workout-data-backup'
 
 interface DataBackupScreenProps {
@@ -23,7 +23,7 @@ export function DataBackupScreen({
   download = downloadWorkoutFlowExport,
 }: DataBackupScreenProps) {
   const inputRef = useRef<HTMLInputElement>(null)
-  const [preview, setPreview] = useState<WorkoutFlowExportV1>()
+  const [preview, setPreview] = useState<WorkoutFlowExportV2>()
   const [error, setError] = useState<string>()
   const [success, setSuccess] = useState<string>()
   const [isBusy, setIsBusy] = useState(false)
@@ -101,7 +101,7 @@ export function DataBackupScreen({
       if (caught instanceof ActiveWorkoutImportError)
         setError('Сначала завершите текущую тренировку')
       else if (caught instanceof FeedbackSettingsImportError)
-        setError('Данные импортированы, но настройки оповещений сохранить не удалось')
+        setError('Не удалось сохранить настройки оповещений. Импорт отменён, текущие данные сохранены')
       else setError('Не удалось импортировать данные. Текущие данные сохранены')
     } finally {
       setIsBusy(false)

@@ -36,3 +36,12 @@ seconds are derived rather than persisted.
 `ActiveWorkoutSession` is a discriminated union with `not_started`, `exercise`,
 `rest`, and `completed` states. Only the `rest` state has `restEndsAt`; only the
 `completed` state has `completedAt`.
+
+## Explicit series and working weights
+
+`resolveWorkoutTemplate` in the parent domain expands series and supersets
+before session creation. Resolved exercise steps carry `set` metadata with a
+series ID, number and total. `getSetProgress` derives the counter and last-set
+marker from it. `getNextExercise` skips rest in the saved execution order.
+`setSessionExerciseWeight` updates every matching exercise in a snapshot;
+persistence atomically updates the catalog too. No per-set history is kept.

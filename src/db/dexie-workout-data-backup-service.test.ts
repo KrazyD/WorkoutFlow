@@ -3,11 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { WorkoutFlowDatabase } from './database'
 import { DexieWorkoutDataBackupService } from './dexie-workout-data-backup-service'
-import { ActiveWorkoutImportError, EXPORT_FORMAT, CURRENT_EXPORT_VERSION, type WorkoutFlowExportV1 } from '../features/data-backup/workout-data-backup'
+import { ActiveWorkoutImportError, EXPORT_FORMAT, CURRENT_EXPORT_VERSION, type WorkoutFlowExportV2 } from '../features/data-backup/workout-data-backup'
 import type { WorkoutFeedbackSettings } from '../features/workout-feedback/workout-feedback-settings'
 
 const databases: WorkoutFlowDatabase[] = []
-const backup = (): WorkoutFlowExportV1 => ({
+const backup = (): WorkoutFlowExportV2 => ({
   format: EXPORT_FORMAT,
   version: CURRENT_EXPORT_VERSION,
   exportedAt: '2026-08-05T12:00:00.000Z',
@@ -50,7 +50,7 @@ describe('DexieWorkoutDataBackupService', () => {
     await database.activeWorkoutSessions.add({ id: 'active', session: {} as never })
     const { service } = createService(database)
     const result = await service.exportData()
-    expect(result).toMatchObject({ format: EXPORT_FORMAT, version: 1, exportedAt: '2026-08-05T12:00:00.000Z' })
+    expect(result).toMatchObject({ format: EXPORT_FORMAT, version: 2, exportedAt: '2026-08-05T12:00:00.000Z' })
     expect(result.data).toMatchObject({ exercises: [{ id: 'e' }], restPresets: [{ id: 'r' }], workoutTemplates: [{ id: 'w' }], feedbackSettings: { soundEnabled: true, vibrationEnabled: false } })
     expect(result).not.toHaveProperty('data.activeWorkoutSessions')
   })
@@ -90,4 +90,38 @@ describe('DexieWorkoutDataBackupService', () => {
     expect(await database.workoutTemplates.toArray()).toEqual([])
     expect(store.save).not.toHaveBeenCalled()
   })
+})
+
+it('round-trips explicit superset references and decimal weights in JSON v2', async () => {
+  const database = new WorkoutFlowDatabase(`backup-series-${crypto.randomUUID()}`); databases.push(database)
+  const data: WorkoutFlowExportV2 = { ...backup(), data: { ...backup().data,
+    exercises: [{ id: 'a', name: 'Бабочка', lastWeightKg: 59.1 }, { id: 'b', name: 'Тяга', lastWeightKg: null }],
+    workoutTemplates: [{ id: 'w', name: 'Суперсет', steps: [{ id: 'g', type: 'superset', restPresetId: 'new-rest', series: [
+      { id: 'sa', type: 'exercise', exerciseId: 'a', setCount: 3 }, { id: 'sb', type: 'exercise', exerciseId: 'b', setCount: 2 },
+    ] }] }],
+  } }
+  const { service } = createService(database)
+  expect(service.validateImport(JSON.parse(JSON.stringify(data))).success).toBe(true)
+  await service.importData(data)
+  expect((await service.exportData()).data).toEqual(data.data)
+})
+
+it('rolls back all entities if feedback settings cannot be written', async () => {
+  const database = new WorkoutFlowDatabase(`backup-settings-${crypto.randomUUID()}`); databases.push(database)
+  await database.exercises.add({ id: 'old', name: 'Старое' })
+  const { service, store } = createService(database)
+  store.save.mockImplementationOnce(() => { throw new Error('quota') })
+  await expect(service.importData(backup())).rejects.toThrow()
+  expect(await database.exercises.toArray()).toEqual([{ id: 'old', name: 'Старое' }])
+  expect(await database.workoutTemplates.count()).toBe(0)
+})
+
+it('rolls back all tables after a database error during otherwise valid import', async () => {
+  const database = new WorkoutFlowDatabase(`backup-write-${crypto.randomUUID()}`); databases.push(database)
+  await database.exercises.add({ id: 'old', name: 'Старое' })
+  const { service } = createService(database)
+  vi.spyOn(database.workoutTemplates, 'bulkAdd').mockRejectedValueOnce(new Error('write failed'))
+  await expect(service.importData(backup())).rejects.toThrow('write failed')
+  expect(await database.exercises.toArray()).toEqual([{ id: 'old', name: 'Старое' }])
+  expect(await database.restPresets.count()).toBe(0)
 })

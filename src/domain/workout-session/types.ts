@@ -2,6 +2,7 @@ export interface Exercise {
   readonly id: string
   readonly name: string
   readonly description?: string
+  readonly lastWeightKg?: number | null
 }
 
 export interface RestPreset {
@@ -10,9 +11,16 @@ export interface RestPreset {
   readonly durationSeconds: number
 }
 
+export interface SetPosition {
+  readonly seriesId: string
+  readonly number: number
+  readonly total: number
+}
+
 export interface ExerciseWorkoutStep {
   readonly type: 'exercise'
   readonly exercise: Exercise
+  readonly set?: SetPosition
 }
 
 export interface RestWorkoutStep {

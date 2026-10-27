@@ -1,3 +1,7 @@
+import {
+  parseWorkingWeight,
+  formatWorkingWeight,
+} from '../../domain/working-weight'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
@@ -5,14 +9,14 @@ import {
   completeCurrentRest,
   extendCurrentRest,
   getCurrentStep,
-  getNextStep,
+  getNextExercise,
+  getSetProgress,
+  setSessionExerciseWeight,
   getRemainingRestSeconds,
   isRestFinished,
   type ActiveWorkoutSession,
-  type WorkoutStep,
 } from '../../domain/workout-session'
 import { RepositoryErrorAlert } from '../../shared/catalog-ui'
-import { formatRestDuration } from '../rest-presets/rest-duration'
 import type { ActiveWorkoutSessionRepository } from './active-workout-session-repository'
 import { formatCountdown } from './countdown'
 import {
@@ -44,11 +48,6 @@ interface WorkoutSessionScreenProps {
 
 export const RESTORED_REST_FEEDBACK_MAX_LATENESS_MS = 5_000
 
-const stepName = (step: WorkoutStep): string =>
-  step.type === 'exercise'
-    ? step.exercise.name
-    : `Отдых — ${formatRestDuration(step.restPreset.durationSeconds)}`
-
 export function WorkoutSessionScreen({
   repository,
   navigate,
@@ -58,6 +57,9 @@ export function WorkoutSessionScreen({
   feedbackSettingsStore = workoutFeedbackSettingsStore,
   feedbackDeduplicator = restFeedbackDeduplicator,
 }: WorkoutSessionScreenProps) {
+  const [editingWeight, setEditingWeight] = useState(false)
+  const [weightInput, setWeightInput] = useState('')
+  const [weightError, setWeightError] = useState<string>()
   const [session, setSession] = useState<ActiveWorkoutSession>()
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -67,7 +69,8 @@ export function WorkoutSessionScreen({
   const [currentTime, setCurrentTime] = useState(() => now())
   const transitionInFlight = useRef(false)
   const mountedAt = useRef(now())
-  const activeRestEndsAt = session?.status === 'rest' ? session.restEndsAt : undefined
+  const activeRestEndsAt =
+    session?.status === 'rest' ? session.restEndsAt : undefined
 
   const reportError = useCallback((cause: unknown, message: string) => {
     console.error('Active workout session repository operation failed.', cause)
@@ -98,73 +101,95 @@ export function WorkoutSessionScreen({
     }
   }, [reportError, repository])
 
-  const persistTransition = useCallback(async (
-    sourceSession: ActiveWorkoutSession,
-    transition: 'exercise' | 'rest',
-  ) => {
-    if (transitionInFlight.current) return
-    if (sourceSession.status === 'not_started' || sourceSession.status === 'completed')
-      return
-
-    transitionInFlight.current = true
-    const transitionTime = now()
-    const result =
-      transition === 'exercise'
-        ? completeCurrentExercise(sourceSession, transitionTime)
-        : completeCurrentRest(sourceSession, transitionTime)
-
-    if (!result.success) {
-      reportError(result.error, 'Не удалось перейти к следующему шагу.')
-      transitionInFlight.current = false
-      return
-    }
-
-    setIsSaving(true)
-    setError(undefined)
-    setRestCompletionFailed(false)
-    try {
-      if (result.value.status === 'completed') {
-        await repository.complete(result.value)
-      } else {
-        await repository.update(result.value)
-      }
-      setSession(result.value)
-      setCurrentTime(transitionTime)
-    } catch (cause) {
-      if (transition === 'rest') setRestCompletionFailed(true)
-      reportError(
-        cause,
-        transition === 'rest'
-          ? 'Не удалось завершить отдых. Текущий шаг не изменён.'
-          : 'Не удалось сохранить прогресс. Текущий шаг не изменён.',
+  const persistTransition = useCallback(
+    async (
+      sourceSession: ActiveWorkoutSession,
+      transition: 'exercise' | 'rest',
+    ) => {
+      if (transitionInFlight.current) return
+      if (
+        sourceSession.status === 'not_started' ||
+        sourceSession.status === 'completed'
       )
-    } finally {
-      setIsSaving(false)
-      transitionInFlight.current = false
-    }
-  }, [now, reportError, repository])
+        return
+
+      transitionInFlight.current = true
+      const transitionTime = now()
+      const result =
+        transition === 'exercise'
+          ? completeCurrentExercise(sourceSession, transitionTime)
+          : completeCurrentRest(sourceSession, transitionTime)
+
+      if (!result.success) {
+        reportError(result.error, 'Не удалось перейти к следующему шагу.')
+        transitionInFlight.current = false
+        return
+      }
+
+      setIsSaving(true)
+      setError(undefined)
+      setRestCompletionFailed(false)
+      try {
+        if (result.value.status === 'completed') {
+          await repository.complete(result.value)
+        } else {
+          await repository.update(result.value)
+        }
+        setSession(result.value)
+        setCurrentTime(transitionTime)
+      } catch (cause) {
+        if (transition === 'rest') setRestCompletionFailed(true)
+        reportError(
+          cause,
+          transition === 'rest'
+            ? 'Не удалось завершить отдых. Текущий шаг не изменён.'
+            : 'Не удалось сохранить прогресс. Текущий шаг не изменён.',
+        )
+      } finally {
+        setIsSaving(false)
+        transitionInFlight.current = false
+      }
+    },
+    [now, reportError, repository],
+  )
 
   const advance = () => {
-    if (!session || session.status === 'not_started' || session.status === 'completed')
+    if (
+      !session ||
+      session.status === 'not_started' ||
+      session.status === 'completed'
+    )
       return
     void persistTransition(session, session.status)
   }
 
-  const tryRestFinishedFeedback = useCallback((sourceSession: Extract<ActiveWorkoutSession, { status: 'rest' }>, detectedAt: number) => {
-    const lateness = detectedAt - sourceSession.restEndsAt
-    if (lateness > RESTORED_REST_FEEDBACK_MAX_LATENESS_MS) return
-    const key = `${sourceSession.templateSnapshot.id}:${sourceSession.startedAt}:${sourceSession.currentStepIndex}:${sourceSession.restEndsAt}`
-    if (!feedbackDeduplicator.markOnce(key)) return
+  const tryRestFinishedFeedback = useCallback(
+    (
+      sourceSession: Extract<ActiveWorkoutSession, { status: 'rest' }>,
+      detectedAt: number,
+    ) => {
+      const lateness = detectedAt - sourceSession.restEndsAt
+      if (lateness > RESTORED_REST_FEEDBACK_MAX_LATENESS_MS) return
+      const key = `${sourceSession.templateSnapshot.id}:${sourceSession.startedAt}:${sourceSession.currentStepIndex}:${sourceSession.restEndsAt}`
+      if (!feedbackDeduplicator.markOnce(key)) return
 
-    const settings = feedbackSettingsStore.load()
-    if (settings.soundEnabled) {
-      void audioService.playRestFinishedSignal().then((result) => {
-        if (!result.success) console.warn('Rest-finished sound was unavailable.', result.error)
-      })
-    }
-    if (settings.vibrationEnabled && !vibrationService.vibrateRestFinished())
-      console.info('Rest-finished vibration was unavailable.')
-  }, [audioService, feedbackDeduplicator, feedbackSettingsStore, vibrationService])
+      const settings = feedbackSettingsStore.load()
+      if (settings.soundEnabled) {
+        void audioService.playRestFinishedSignal().then((result) => {
+          if (!result.success)
+            console.warn('Rest-finished sound was unavailable.', result.error)
+        })
+      }
+      if (settings.vibrationEnabled && !vibrationService.vibrateRestFinished())
+        console.info('Rest-finished vibration was unavailable.')
+    },
+    [
+      audioService,
+      feedbackDeduplicator,
+      feedbackSettingsStore,
+      vibrationService,
+    ],
+  )
 
   useEffect(() => {
     if (session?.status !== 'rest' || transitionInFlight.current) return
@@ -190,11 +215,21 @@ export function WorkoutSessionScreen({
       const detectedAt = currentTime
       // A restored deadline is only announced when it is still fresh. A live timer
       // uses the same path and key, so Strict Mode and retries cannot repeat it.
-      if (detectedAt >= mountedAt.current || detectedAt - session.restEndsAt <= RESTORED_REST_FEEDBACK_MAX_LATENESS_MS)
+      if (
+        detectedAt >= mountedAt.current ||
+        detectedAt - session.restEndsAt <=
+          RESTORED_REST_FEEDBACK_MAX_LATENESS_MS
+      )
         tryRestFinishedFeedback(session, detectedAt)
       void persistTransition(session, 'rest')
     }
-  }, [currentTime, persistTransition, restCompletionFailed, session, tryRestFinishedFeedback])
+  }, [
+    currentTime,
+    persistTransition,
+    restCompletionFailed,
+    session,
+    tryRestFinishedFeedback,
+  ])
 
   const extendRest = async () => {
     if (session?.status !== 'rest' || transitionInFlight.current) return
@@ -214,10 +249,44 @@ export function WorkoutSessionScreen({
       setSession(result.value)
       setCurrentTime(now())
     } catch (cause) {
-      reportError(cause, 'Не удалось увеличить время отдыха. Попробуйте ещё раз.')
+      reportError(
+        cause,
+        'Не удалось увеличить время отдыха. Попробуйте ещё раз.',
+      )
     } finally {
       setIsSaving(false)
       transitionInFlight.current = false
+    }
+  }
+
+  const saveWeight = async () => {
+    if (!session || transitionInFlight.current) return
+    const step = getCurrentStep(session)
+    if (step?.type !== 'exercise') return
+    const parsed = parseWorkingWeight(weightInput)
+    if (!parsed.success) {
+      setWeightError(parsed.message)
+      return
+    }
+    transitionInFlight.current = true
+    setIsSaving(true)
+    setWeightError(undefined)
+    try {
+      await repository.updateExerciseWeight(
+        session,
+        step.exercise.id,
+        parsed.value,
+      )
+      setSession(
+        setSessionExerciseWeight(session, step.exercise.id, parsed.value),
+      )
+      setEditingWeight(false)
+    } catch (cause) {
+      console.error('Could not save working weight.', cause)
+      setWeightError('Не удалось сохранить вес. Попробуйте ещё раз.')
+    } finally {
+      transitionInFlight.current = false
+      setIsSaving(false)
     }
   }
 
@@ -233,7 +302,11 @@ export function WorkoutSessionScreen({
   }
 
   if (isLoading) {
-    return <main className="min-h-dvh bg-slate-950 p-6 text-center text-slate-400">Загрузка…</main>
+    return (
+      <main className="min-h-dvh bg-slate-950 p-6 text-center text-slate-400">
+        Загрузка…
+      </main>
+    )
   }
 
   if (!session) {
@@ -255,18 +328,26 @@ export function WorkoutSessionScreen({
 
   const totalSteps = session.templateSnapshot.steps.length
   const currentStep = getCurrentStep(session)
-  const nextStep = getNextStep(session)
+  const nextStep = getNextExercise(session)
 
   return (
     <main className="min-h-dvh bg-slate-950 px-4 py-8 text-slate-50 sm:px-6">
       <div className="mx-auto max-w-xl">
         <header className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold tracking-[0.2em] text-lime-300 uppercase">Workout Flow</p>
-            <h1 className="mt-2 text-2xl font-bold">{session.templateSnapshot.name}</h1>
+            <p className="text-xs font-semibold tracking-[0.2em] text-lime-300 uppercase">
+              Workout Flow
+            </p>
+            <h1 className="mt-2 text-2xl font-bold">
+              {session.templateSnapshot.name}
+            </h1>
           </div>
           {session.status !== 'completed' ? (
-            <button type="button" className="min-h-11 px-2 text-sm text-slate-300" onClick={() => setShowExitConfirmation(true)}>
+            <button
+              type="button"
+              className="min-h-11 px-2 text-sm text-slate-300"
+              onClick={() => setShowExitConfirmation(true)}
+            >
               Выйти
             </button>
           ) : null}
@@ -275,33 +356,64 @@ export function WorkoutSessionScreen({
         {error ? <RepositoryErrorAlert message={error} /> : null}
 
         {showExitConfirmation ? (
-          <section role="alertdialog" aria-labelledby="exit-title" className="mt-6 rounded-2xl border border-red-900 bg-red-950/40 p-5">
-            <h2 id="exit-title" className="font-semibold">Завершить текущую тренировку?</h2>
+          <section
+            role="alertdialog"
+            aria-labelledby="exit-title"
+            className="mt-6 rounded-2xl border border-red-900 bg-red-950/40 p-5"
+          >
+            <h2 id="exit-title" className="font-semibold">
+              Завершить текущую тренировку?
+            </h2>
             <div className="mt-4 flex flex-wrap gap-3">
-              <button type="button" disabled={isSaving} className="min-h-11 rounded-xl border border-slate-700 px-4" onClick={() => setShowExitConfirmation(false)}>Продолжить тренировку</button>
-              <button type="button" disabled={isSaving} className="min-h-11 rounded-xl bg-red-500 px-4 font-semibold" onClick={() => void finishAndLeave()}>Завершить тренировку</button>
+              <button
+                type="button"
+                disabled={isSaving}
+                className="min-h-11 rounded-xl border border-slate-700 px-4"
+                onClick={() => setShowExitConfirmation(false)}
+              >
+                Продолжить тренировку
+              </button>
+              <button
+                type="button"
+                disabled={isSaving}
+                className="min-h-11 rounded-xl bg-red-500 px-4 font-semibold"
+                onClick={() => void finishAndLeave()}
+              >
+                Завершить тренировку
+              </button>
             </div>
           </section>
         ) : null}
 
         {session.status === 'completed' ? (
           <section className="mt-10 rounded-3xl border border-lime-900 bg-slate-900 p-6 text-center">
-            <p className="text-3xl" aria-hidden="true">✓</p>
+            <p className="text-3xl" aria-hidden="true">
+              ✓
+            </p>
             <h2 className="mt-3 text-2xl font-bold">Тренировка завершена</h2>
             <p className="mt-3 text-lg">{session.templateSnapshot.name}</p>
             <p className="mt-2 text-slate-400">Выполнено шагов: {totalSteps}</p>
-            <button type="button" disabled={isSaving} className="mt-8 min-h-14 w-full rounded-2xl bg-lime-300 px-5 text-lg font-bold text-slate-950" onClick={() => void finishAndLeave()}>
+            <button
+              type="button"
+              disabled={isSaving}
+              className="mt-8 min-h-14 w-full rounded-2xl bg-lime-300 px-5 text-lg font-bold text-slate-950"
+              onClick={() => void finishAndLeave()}
+            >
               Вернуться к тренировкам
             </button>
           </section>
         ) : currentStep ? (
           <section className="mt-10">
-            <p className="text-sm font-semibold text-slate-400">Шаг {session.currentStepIndex + 1} из {totalSteps}</p>
+            <p className="text-sm font-semibold text-slate-400">
+              Шаг {session.currentStepIndex + 1} из {totalSteps}
+            </p>
             <p className="mt-6 text-sm font-semibold tracking-wide text-lime-300 uppercase">
               {currentStep.type === 'exercise' ? 'Упражнение' : 'Отдых'}
             </p>
             <h2 className="mt-3 text-4xl font-bold tracking-tight">
-              {currentStep.type === 'exercise' ? currentStep.exercise.name : currentStep.restPreset.name}
+              {currentStep.type === 'exercise'
+                ? currentStep.exercise.name
+                : currentStep.restPreset.name}
             </h2>
             {currentStep.type === 'rest' && session.status === 'rest' ? (
               <p
@@ -313,18 +425,122 @@ export function WorkoutSessionScreen({
                 )}
               </p>
             ) : null}
-            {nextStep ? (
-              <div className="mt-10 rounded-2xl bg-slate-900 p-5">
-                <p className="text-sm text-slate-400">Далее:</p>
-                <p className="mt-1 font-semibold">{stepName(nextStep)}</p>
-              </div>
+            {currentStep.type === 'exercise' ? (
+              <>
+                <p className="mt-4 text-lg">
+                  Подход {getSetProgress(currentStep).number} из{' '}
+                  {getSetProgress(currentStep).total}
+                </p>
+                {getSetProgress(currentStep).isLast ? (
+                  <p className="mt-2 font-semibold text-lime-300">
+                    Последний подход
+                  </p>
+                ) : null}
+                <section
+                  aria-label="Рабочий вес"
+                  className="mt-6 rounded-2xl bg-slate-900 p-5"
+                >
+                  <h3 className="text-sm text-slate-400">Рабочий вес</h3>
+                  <p className="mt-2 text-xl">
+                    {formatWorkingWeight(currentStep.exercise.lastWeightKg)}
+                  </p>
+                  {editingWeight ? (
+                    <form
+                      className="mt-3 space-y-3"
+                      onSubmit={(event) => {
+                        event.preventDefault()
+                        void saveWeight()
+                      }}
+                    >
+                      <label className="block">
+                        Вес, кг
+                        <input
+                          autoFocus
+                          type="text"
+                          inputMode="decimal"
+                          value={weightInput}
+                          aria-invalid={Boolean(weightError)}
+                          aria-describedby={
+                            weightError ? 'weight-error' : undefined
+                          }
+                          className="mt-2 min-h-11 w-full rounded-xl border border-slate-700 px-3"
+                          onChange={(event) =>
+                            setWeightInput(event.target.value)
+                          }
+                        />
+                      </label>
+                      {weightError ? (
+                        <p
+                          id="weight-error"
+                          role="alert"
+                          className="text-red-300"
+                        >
+                          {weightError}
+                        </p>
+                      ) : null}
+                      <div className="flex flex-wrap gap-4">
+                        <button
+                          type="submit"
+                          disabled={isSaving}
+                          className="min-h-11 text-lime-300"
+                        >
+                          Сохранить вес
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isSaving}
+                          className="min-h-11"
+                          onClick={() => setWeightInput('')}
+                        >
+                          Очистить
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isSaving}
+                          className="min-h-11"
+                          onClick={() => setEditingWeight(false)}
+                        >
+                          Отмена
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isSaving}
+                      className="mt-2 min-h-11 text-lime-300"
+                      onClick={() => {
+                        setWeightInput(
+                          currentStep.exercise.lastWeightKg
+                            ?.toString()
+                            .replace('.', ',') ?? '',
+                        )
+                        setWeightError(undefined)
+                        setEditingWeight(true)
+                      }}
+                    >
+                      Изменить вес
+                    </button>
+                  )}
+                </section>
+              </>
             ) : null}
             {currentStep.type === 'rest' ? (
               <div className="mt-8 grid gap-3 sm:grid-cols-2">
-                <button type="button" disabled={isSaving} className="min-h-14 rounded-2xl border border-slate-700 px-5 text-lg font-semibold disabled:opacity-50" onClick={() => void extendRest()}>
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  className="min-h-14 rounded-2xl border border-slate-700 px-5 text-lg font-semibold disabled:opacity-50"
+                  onClick={() => void extendRest()}
+                >
                   +30 секунд
                 </button>
-                <button type="button" disabled={isSaving} className="min-h-14 rounded-2xl bg-lime-300 px-5 text-lg font-bold text-slate-950 disabled:opacity-50" onClick={advance}>
+                <button
+                  type="button"
+                  disabled={isSaving}
+                  className="min-h-14 rounded-2xl bg-lime-300 px-5 text-lg font-bold text-slate-950 disabled:opacity-50"
+                  onClick={advance}
+                >
                   {isSaving
                     ? 'Сохранение…'
                     : restCompletionFailed
@@ -333,10 +549,32 @@ export function WorkoutSessionScreen({
                 </button>
               </div>
             ) : (
-              <button type="button" disabled={isSaving} className="mt-8 min-h-16 w-full rounded-2xl bg-lime-300 px-6 text-xl font-bold text-slate-950 disabled:opacity-50" onClick={advance}>
+              <button
+                type="button"
+                disabled={isSaving || editingWeight}
+                className="mt-8 min-h-16 w-full rounded-2xl bg-lime-300 px-6 text-xl font-bold text-slate-950 disabled:opacity-50"
+                onClick={advance}
+              >
                 {isSaving ? 'Сохранение…' : 'Выполнено'}
               </button>
             )}
+            <aside
+              className="mt-8 rounded-2xl bg-slate-900 p-5"
+              aria-label="Следующее упражнение"
+            >
+              {nextStep ? (
+                <>
+                  <p className="text-sm text-slate-400">Далее</p>
+                  <p className="mt-1 font-semibold">{nextStep.exercise.name}</p>
+                  <p className="mt-1 text-sm text-slate-400">
+                    Подход {getSetProgress(nextStep).number} из{' '}
+                    {getSetProgress(nextStep).total}
+                  </p>
+                </>
+              ) : (
+                <p>Последнее упражнение тренировки</p>
+              )}
+            </aside>
           </section>
         ) : null}
       </div>

@@ -32,6 +32,7 @@ const cloneStep = (step: WorkoutStep): WorkoutStep => {
   if (step.type === 'exercise') {
     return {
       type: 'exercise',
+      ...(step.set ? { set: { ...step.set } } : {}),
       exercise: cloneExercise(step.exercise),
     }
   }
@@ -225,4 +226,41 @@ export function isWorkoutCompleted(
   session: ActiveWorkoutSession,
 ): session is CompletedWorkoutSession {
   return session.status === 'completed'
+}
+
+/** Standalone resolved steps without metadata are independent one-set series. */
+export function getSetProgress(step: import('./types').ExerciseWorkoutStep) {
+  const { number, total } = step.set ?? { number: 1, total: 1 }
+  return { number, total, isLast: number === total }
+}
+
+export function getNextExercise(
+  session: ActiveWorkoutSession,
+): import('./types').ExerciseWorkoutStep | undefined {
+  if (session.status === 'completed') return undefined
+  const start =
+    session.status === 'not_started' ? 0 : session.currentStepIndex + 1
+  return session.templateSnapshot.steps
+    .slice(start)
+    .find((step) => step.type === 'exercise')
+}
+
+export function setSessionExerciseWeight(
+  session: ActiveWorkoutSession,
+  exerciseId: string,
+  weightKg: number | null,
+): ActiveWorkoutSession {
+  if (weightKg !== null && (!Number.isFinite(weightKg) || weightKg < 0))
+    throw new Error('Invalid weight')
+  return {
+    ...session,
+    templateSnapshot: {
+      ...session.templateSnapshot,
+      steps: session.templateSnapshot.steps.map((step) =>
+        step.type === 'exercise' && step.exercise.id === exerciseId
+          ? { ...step, exercise: { ...step.exercise, lastWeightKg: weightKg } }
+          : step,
+      ),
+    },
+  }
 }

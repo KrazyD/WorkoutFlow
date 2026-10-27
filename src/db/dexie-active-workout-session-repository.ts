@@ -1,3 +1,4 @@
+import { setSessionExerciseWeight } from '../domain/workout-session'
 import type { ActiveWorkoutSession } from '../domain/workout-session'
 import type { ActiveWorkoutSessionRepository } from '../features/workout-session/active-workout-session-repository'
 import type { WorkoutFlowDatabase } from './database'
@@ -9,9 +10,7 @@ export interface StoredActiveWorkoutSession {
   readonly session: ActiveWorkoutSession
 }
 
-export class DexieActiveWorkoutSessionRepository
-  implements ActiveWorkoutSessionRepository
-{
+export class DexieActiveWorkoutSessionRepository implements ActiveWorkoutSessionRepository {
   constructor(private readonly database: WorkoutFlowDatabase) {}
 
   async get(): Promise<ActiveWorkoutSession | undefined> {
@@ -32,6 +31,26 @@ export class DexieActiveWorkoutSessionRepository
 
   async complete(session: ActiveWorkoutSession): Promise<void> {
     await this.save(session)
+  }
+
+  async updateExerciseWeight(
+    session: ActiveWorkoutSession,
+    exerciseId: string,
+    weightKg: number | null,
+  ): Promise<void> {
+    const updated = setSessionExerciseWeight(session, exerciseId, weightKg)
+    await this.database.transaction(
+      'rw',
+      this.database.exercises,
+      this.database.activeWorkoutSessions,
+      async () => {
+        // Deleted catalog exercises must not break an independent running snapshot.
+        await this.database.exercises.update(exerciseId, {
+          lastWeightKg: weightKg,
+        })
+        await this.save(updated)
+      },
+    )
   }
 
   async clear(): Promise<void> {

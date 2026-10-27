@@ -14,7 +14,8 @@ reference cannot start and shows a user-facing error.
 3. The caller supplies the current time to `startWorkout`.
 4. The engine activates the first step. If it is rest, the engine derives
    `restEndsAt` from the supplied time and snapshot duration.
-5. The UI renders the active step and, when available, the next step.
+5. The UI renders the active step, series counter, last-set marker and the next
+   exercise (skipping rest) with its own counter.
 6. An exercise advances only after an explicit completion action.
 7. A rest shows a countdown derived from its absolute `restEndsAt` deadline and
    advances automatically at zero. The user may skip it or extend the deadline
@@ -23,8 +24,7 @@ reference cannot start and shows a user-facing error.
 
 ## Domain operations
 
-The precise API will be introduced with the feature, but the engine is expected
-to expose pure operations equivalent to:
+The engine exposes pure operations to:
 
 - start a workout from a resolved snapshot and explicit current time;
 - complete the active exercise at an explicit current time;
@@ -83,3 +83,16 @@ The engine must reject or return unchanged state for transitions that do not
 match the active step, such as completing an exercise during rest or finishing
 rest while an exercise is active. Operations return explicit success or
 domain-error results.
+
+## Series and weight editing
+
+See [domain model](domain-model.md) for the exact block expansion order. The
+editor exposes independent set counts and a rest preset for each series or
+superset. Counts must be integers from 1 to 100; supersets need two exercises.
+For block transitions, insert an explicit rest if desired.
+
+Weight accepts decimal dot or comma through an iPhone decimal keyboard. Empty
+input clears the value; invalid and negative input is rejected. Save commits
+both catalog and snapshot changes atomically before updating the display.
+Exercise completion is disabled while weight editing is open, preventing a
+step change from discarding unsaved input. Errors keep the form open to retry.

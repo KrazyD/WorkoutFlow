@@ -1,85 +1,77 @@
 # Domain model
 
-## Exercise
+## Catalogs
 
-A user-defined activity.
+`Exercise` has an ID, name, optional description and optional `lastWeightKg`.
+Missing or null weight means unspecified. Weight is a finite, nonnegative
+number of kilograms. It is the latest value, not a per-set result or history.
+`RestPreset` has an ID, name and integer `durationSeconds` (5–3,600).
 
-- `id`: stable unique identifier.
-- `name`: non-empty display name.
-- `description`: optional explanatory text.
+## Templates and series
 
-## RestPreset
+`WorkoutTemplateRecord.steps` is an ordered list of blocks:
 
-A reusable rest definition.
+- `exercise`: a series with its own stable `id`, `exerciseId`, `setCount`
+  (1–100), and optional `restPresetId` for rest between sets.
+- `superset`: a block with its own ID, at least two ordered exercise series,
+  and optional `restPresetId` for rest between every pair of performed sets.
+- `rest`: an explicit rest preset reference, useful between blocks.
 
-- `id`: stable unique identifier.
-- `name`: non-empty display name.
-- `durationSeconds`: positive whole number of seconds.
+An omitted set count means one set. Omitted rest means no automatic rest.
+Superset rest is controlled by the block; individual series rest is unused
+inside supersets. Series IDs are unique within a template, including nested
+series. Reusing an exercise in another block creates a separate series.
 
-Rest presets accept durations from 5 through 3,600 seconds. Persistence stores
-only `durationSeconds`; minutes and seconds are UI input fields rather than
-additional domain properties.
+`resolveWorkoutTemplate` resolves catalog references and expands blocks into
+one linear sequence before starting. For A × 3 and B × 3 it produces
+A1, rest, B1, rest, A2, rest, B2, rest, A3, rest, B3. A series with fewer sets
+is skipped in later rounds. There is no automatic rest after a block's final
+set; add an explicit rest block when needed. Missing references or invalid
+counts prevent starting. Catalog deletion never changes a running snapshot.
 
-## WorkoutTemplate
+## Session
 
-A reusable workout plan.
+The existing deterministic execution engine runs only the expanded sequence;
+there is no separate superset state machine. Exercise steps contain resolved
+exercise data and explicit `set: { seriesId, number, total }` metadata. A
+session stores `templateSnapshot`, `currentStepIndex`, `startedAt` and a
+`not_started`, `exercise`, `rest`, or `completed` status. Rest alone has
+`restEndsAt`; completed state alone has `completedAt`.
 
-- `id`: stable unique identifier.
-- `name`: non-empty display name.
-- `steps`: ordered list of `WorkoutStep` values.
+`getSetProgress` returns the current number, total and `isLast` from the same
+metadata. It never counts matching names or IDs across a template.
+`getNextExercise` scans forward in the active snapshot, skipping rest. It may
+return another set of the same exercise, or undefined at the end.
 
-A persisted template must contain at least one step before it can be saved.
-The template editor supports creating, reordering, replacing, and removing
-steps. Only a non-empty template can be started.
+A session is saved under the fixed `active` IndexedDB key. Its metadata,
+exercise weights, current index and absolute deadline survive reload.
+`setSessionExerciseWeight` immutably updates every occurrence of an exercise
+in that snapshot, including other series of the same exercise. The database
+adapter writes the snapshot and catalog weight together in one transaction.
+The latest catalog weights are read again when a new workout starts. Clearing
+weight stores null. Editing exercise name/description preserves its weight.
+If an exercise was deleted during a session, its snapshot remains editable
+but there is no longer a catalog record to update for future workouts.
 
-## WorkoutStep
+No completed-set results, workout statistics or progression history are kept.
 
-A persisted step has its own stable `id` and is a discriminated union with two
-variants:
+## Storage compatibility
 
-- `exercise`: stores `exerciseId`, referencing an `Exercise` by identifier.
-- `rest`: stores `restPresetId`, referencing a `RestPreset` by identifier.
+IndexedDB stays at schema version 4: no tables or indexes change; the new fields
+are ordinary record properties. No data is deleted or reset. Existing exercise
+steps without counts are independent one-set series. Existing active snapshots
+without set metadata show 1 of 1. The same execution engine handles them.
+Old manually repeated steps are never guessed to be one series; edit them into
+an explicit series or superset to obtain a multi-set counter.
 
-Order is represented by position in `WorkoutTemplate.steps`, not by a mutable
-order field. Names, descriptions, and durations are not copied into persisted
-steps. If a referenced catalog record is later deleted, the editor displays a
-missing-record placeholder and keeps the step removable or replaceable; catalog
-deletion does not cascade into templates.
+JSON backup uses `workout-flow-export` version 2 and includes catalogs, weights,
+all series/group IDs, set counts, rest references, template order and feedback
+settings. It excludes active sessions. JSON v1 is rejected with a clear message.
 
-## ActiveWorkout
+## Time and boundaries
 
-The state of one running or just-completed workout (`ActiveWorkoutSession`).
-
-- `templateSnapshot`: immutable workout data required to finish the session.
-- `currentStepIndex`: zero-based position of the active step.
-- `startedAt`: explicit start timestamp.
-- `status`: `not_started`, `exercise`, `rest`, or `completed`.
-- `restEndsAt`: end timestamp when the active step is rest; absent otherwise.
-
-The snapshot contains the template identifier and name plus ordered, resolved
-steps. Exercise steps copy the exercise identifier, name, and optional
-description; rest steps copy the preset identifier, name, and duration. It
-therefore prevents later catalog or template edits or deletions from changing
-or breaking an active session.
-
-The persisted record wraps this domain value under the fixed `active` key.
-Completed state is kept only long enough to render the completion screen and is
-cleared when the user returns to the template list; workout history is not
-created.
-
-## Identity and time
-
-Identifiers are opaque strings generated outside pure domain operations.
-Timestamps use a single documented representation (milliseconds since Unix
-epoch is the intended default). Current time is supplied by the caller to every
-domain operation that needs it.
-
-## Invariants
-
-- The current step index addresses a snapshot step while status is `active`.
-- A completed workout has no active step and no `restEndsAt`.
-- `restEndsAt` exists only for an active rest step.
-- Remaining rest seconds are derived as
-  `max(0, ceil((restEndsAt - currentTime) / 1000))` and are never persisted.
-- Completing a step advances exactly once or completes the session.
-- Exercise and rest catalog deletion must not invalidate existing snapshots.
+IDs are created outside the domain. Time is passed explicitly in milliseconds
+since Unix epoch. Domain code never reads browser APIs or the wall clock.
+Remaining rest seconds are `max(0, ceil((restEndsAt - now) / 1000))`.
+Completing a step advances exactly once; browser intervals, storage and feedback
+belong to the application edge.

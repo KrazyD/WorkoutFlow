@@ -43,6 +43,8 @@ export class DexieExerciseRepository implements ExerciseRepository {
     }
 
     const exercise: Exercise = {
+      ...existing,
+      description: undefined,
       id,
       name: input.name,
       ...(input.description ? { description: input.description } : {}),

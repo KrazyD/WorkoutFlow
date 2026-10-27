@@ -7,10 +7,10 @@ import {
   downloadWorkoutFlowExport,
   serializeWorkoutFlowExport,
   validateWorkoutFlowImport,
-  type WorkoutFlowExportV1,
+  type WorkoutFlowExportV2,
 } from './workout-data-backup'
 
-const validBackup = (): WorkoutFlowExportV1 => ({
+const validBackup = (): WorkoutFlowExportV2 => ({
   format: EXPORT_FORMAT,
   version: CURRENT_EXPORT_VERSION,
   exportedAt: '2026-08-05T12:00:00.000Z',
@@ -30,7 +30,7 @@ const validBackup = (): WorkoutFlowExportV1 => ({
 })
 
 describe('workout data backup validation', () => {
-  it('accepts and normalizes a valid v1 backup', () => {
+  it('accepts and normalizes a valid v2 backup', () => {
     const result = validateWorkoutFlowImport(validBackup())
     expect(result.success).toBe(true)
     if (result.success) expect(result.data.data.exercises[0]).toEqual({ id: 'exercise-1', name: 'Жим ногами' })
@@ -39,8 +39,8 @@ describe('workout data backup validation', () => {
   it.each([
     [{}, 'Это не файл резервной копии Workout Flow'],
     [{ ...validBackup(), format: 'another' }, 'Это не файл резервной копии Workout Flow'],
-    [{ ...validBackup(), version: 2 }, 'Версия резервной копии не поддерживается'],
-    [{ format: EXPORT_FORMAT, version: 1, exportedAt: validBackup().exportedAt }, 'В файле отсутствуют данные резервной копии'],
+    [{ ...validBackup(), version: 1 }, 'Версия резервной копии не поддерживается'],
+    [{ format: EXPORT_FORMAT, version: 2, exportedAt: validBackup().exportedAt }, 'В файле отсутствуют данные резервной копии'],
   ])('rejects an invalid envelope', (input, message) => {
     expect(validateWorkoutFlowImport(input)).toEqual({ success: false, message })
   })
@@ -87,7 +87,7 @@ describe('workout data backup validation', () => {
 
 describe('workout data backup download', () => {
   it('serializes readable JSON and creates a timestamped filename', () => {
-    expect(JSON.parse(serializeWorkoutFlowExport(validBackup()))).toMatchObject({ format: EXPORT_FORMAT, version: 1 })
+    expect(JSON.parse(serializeWorkoutFlowExport(validBackup()))).toMatchObject({ format: EXPORT_FORMAT, version: 2 })
     expect(serializeWorkoutFlowExport(validBackup())).toContain('\n  "format"')
     expect(createBackupFileName(validBackup().exportedAt)).toBe('workout-flow-backup-2026-08-05-12-00-00.json')
   })
@@ -106,4 +106,20 @@ describe('workout data backup download', () => {
     expect(anchor.remove).toHaveBeenCalledOnce()
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:test')
   })
+})
+
+it.each([
+  { id: 'g', type: 'superset', series: [{ id: 'same', type: 'exercise', exerciseId: 'exercise-1', setCount: 3 }, { id: 'same', type: 'exercise', exerciseId: 'exercise-1', setCount: 2 }] },
+  { id: 'g', type: 'superset', series: [{ id: 'a', type: 'exercise', exerciseId: 'missing', setCount: 3 }, { id: 'b', type: 'exercise', exerciseId: 'exercise-1', setCount: 3 }] },
+  { id: 'g', type: 'superset', restPresetId: 'missing', series: [{ id: 'a', type: 'exercise', exerciseId: 'exercise-1' }, { id: 'b', type: 'exercise', exerciseId: 'exercise-1' }] },
+  { id: 'g', type: 'exercise', exerciseId: 'exercise-1', setCount: 1.5 },
+  { id: 'g', type: 'superset', series: [] },
+])('rejects invalid nested series or references before import: %j', (step) => {
+  const backup = validBackup()
+  expect(validateWorkoutFlowImport({ ...backup, data: { ...backup.data, workoutTemplates: [{ id: 'w', name: 'Тест', steps: [step] }] } }).success).toBe(false)
+})
+
+it.each([-1, NaN, Infinity, '59,1'])('rejects an invalid exported weight %s', (lastWeightKg) => {
+  const backup = validBackup()
+  expect(validateWorkoutFlowImport({ ...backup, data: { ...backup.data, exercises: [{ id: 'exercise-1', name: 'Тест', lastWeightKg }] } }).success).toBe(false)
 })

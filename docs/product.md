@@ -12,11 +12,11 @@ The product will allow a user to:
 
 1. Maintain a personal exercise catalog.
 2. Maintain reusable rest presets.
-3. Build a workout template from ordered exercise and rest steps.
+3. Build a workout template from exercise series, supersets and rest blocks.
 4. Start a workout from a template.
 5. Mark an exercise as complete.
 6. Follow an automatic rest countdown, skip it, or add 30 seconds.
-7. See the next step during an active workout.
+7. See the current set, last-set marker and next exercise during a workout.
 8. Finish after all steps are complete.
 
 ## Implementation status
@@ -46,7 +46,23 @@ restore and is never included in a backup.
 ## MVP boundaries
 
 MVP has no backend, registration, accounts, or synchronization. It does not
-track weight, repetitions, workout history, or progression.
+track per-set results, completed repetitions, workout history, or progression.
+It stores only the latest working weight for each exercise and its active-session
+value. Decimal kilograms can be edited and cleared during a workout.
 
 The application interface is Russian. Code, identifiers, and repository
 documentation are English.
+
+## PWA support
+
+The app can be installed and used offline after its first successful production
+precache. Updates require confirmation and are deferred while a persisted
+workout is unfinished. Local data and JSON backup remain the source of truth.
+See [PWA](pwa.md) for iPhone installation, storage and background-timer limits.
+
+## Editor behavior
+
+The edited workout is temporarily hidden from the simultaneously visible list,
+without deleting its record. Save or Cancel returns it to the list. A floating,
+accessible down arrow appears while Save is offscreen and scrolls smoothly to
+it. Its position includes iPhone safe-area insets.

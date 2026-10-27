@@ -5,5 +5,6 @@ export interface ActiveWorkoutSessionRepository {
   save(session: ActiveWorkoutSession): Promise<void>
   update(session: ActiveWorkoutSession): Promise<void>
   complete(session: ActiveWorkoutSession): Promise<void>
+  updateExerciseWeight(session: ActiveWorkoutSession, exerciseId: string, weightKg: number | null): Promise<void>
   clear(): Promise<void>
 }

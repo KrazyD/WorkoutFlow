@@ -37,3 +37,11 @@ describe('validateWorkoutTemplateForm', () => {
     })
   })
 })
+
+it.each([0, -1, 1.5, 101, NaN])('rejects invalid series count %s', (setCount) => {
+  expect(validateWorkoutTemplateForm({ name: 'Тест', steps: [{ ...step, setCount }] }).success).toBe(false)
+})
+
+it('rejects a superset without two series', () => {
+  expect(validateWorkoutTemplateForm({ name: 'Тест', steps: [{ id: 'g', type: 'superset', series: [step] }] }).success).toBe(false)
+})

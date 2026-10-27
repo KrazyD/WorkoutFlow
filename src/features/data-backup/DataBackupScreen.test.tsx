@@ -3,9 +3,9 @@ import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 
 import { DataBackupScreen } from './DataBackupScreen'
-import { CURRENT_EXPORT_VERSION, EXPORT_FORMAT, MAX_IMPORT_FILE_SIZE_BYTES, type ImportValidationResult, type WorkoutDataBackupService, type WorkoutFlowExportV1 } from './workout-data-backup'
+import { CURRENT_EXPORT_VERSION, EXPORT_FORMAT, MAX_IMPORT_FILE_SIZE_BYTES, type ImportValidationResult, type WorkoutDataBackupService, type WorkoutFlowExportV2 } from './workout-data-backup'
 
-const backup: WorkoutFlowExportV1 = {
+const backup: WorkoutFlowExportV2 = {
   format: EXPORT_FORMAT,
   version: CURRENT_EXPORT_VERSION,
   exportedAt: '2026-08-05T12:00:00.000Z',

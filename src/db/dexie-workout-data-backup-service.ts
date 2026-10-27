@@ -11,7 +11,7 @@ import {
   FeedbackSettingsImportError,
   validateWorkoutFlowImport,
   type WorkoutDataBackupService,
-  type WorkoutFlowExportV1,
+  type WorkoutFlowExportV2,
 } from '../features/data-backup/workout-data-backup'
 
 export class DexieWorkoutDataBackupService implements WorkoutDataBackupService {
@@ -25,7 +25,7 @@ export class DexieWorkoutDataBackupService implements WorkoutDataBackupService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async exportData(): Promise<WorkoutFlowExportV1> {
+  async exportData(): Promise<WorkoutFlowExportV2> {
     const [exercises, restPresets, workoutTemplates] = await Promise.all([
       this.exerciseRepository.getAll(),
       this.restPresetRepository.getAll(),
@@ -48,32 +48,55 @@ export class DexieWorkoutDataBackupService implements WorkoutDataBackupService {
     return validateWorkoutFlowImport(input)
   }
 
-  async importData(backup: WorkoutFlowExportV1): Promise<void> {
-    if (await this.activeSessionRepository.get()) throw new ActiveWorkoutImportError()
-
+  async importData(input: WorkoutFlowExportV2): Promise<void> {
+    const validation = validateWorkoutFlowImport(input)
+    if (!validation.success) throw new Error(validation.message)
+    const backup = validation.data
+    if (await this.activeSessionRepository.get())
+      throw new ActiveWorkoutImportError()
     const previousSettings = this.feedbackSettingsStore.load()
-    await this.database.transaction(
-      'rw',
-      [this.database.workoutTemplates, this.database.restPresets, this.database.exercises],
-      async () => {
-        await this.database.workoutTemplates.clear()
-        await this.database.restPresets.clear()
-        await this.database.exercises.clear()
-        await this.database.exercises.bulkAdd([...backup.data.exercises])
-        await this.database.restPresets.bulkAdd([...backup.data.restPresets])
-        await this.database.workoutTemplates.bulkAdd([...backup.data.workoutTemplates])
-      },
-    )
-
+    let settingsChanged = false
     try {
-      this.feedbackSettingsStore.save(backup.data.feedbackSettings)
+      await this.database.transaction(
+        'rw',
+        [
+          this.database.workoutTemplates,
+          this.database.restPresets,
+          this.database.exercises,
+          this.database.activeWorkoutSessions,
+        ],
+        async () => {
+          // Lock the session table too: another tab cannot start during restore.
+          if (await this.database.activeWorkoutSessions.count())
+            throw new ActiveWorkoutImportError()
+          await this.database.workoutTemplates.clear()
+          await this.database.restPresets.clear()
+          await this.database.exercises.clear()
+          await this.database.exercises.bulkAdd([...backup.data.exercises])
+          await this.database.restPresets.bulkAdd([...backup.data.restPresets])
+          await this.database.workoutTemplates.bulkAdd([
+            ...backup.data.workoutTemplates,
+          ])
+          try {
+            settingsChanged = true
+            this.feedbackSettingsStore.save(backup.data.feedbackSettings)
+          } catch (error) {
+            throw new FeedbackSettingsImportError(
+              'Feedback settings could not be saved.',
+              { cause: error },
+            )
+          }
+        },
+      )
     } catch (error) {
-      try {
-        this.feedbackSettingsStore.save(previousSettings)
-      } catch (rollbackError) {
-        console.error('Could not restore feedback settings after import failure.', rollbackError)
+      if (settingsChanged) {
+        try {
+          this.feedbackSettingsStore.save(previousSettings)
+        } catch (rollbackError) {
+          console.error('Could not restore feedback settings.', rollbackError)
+        }
       }
-      throw new FeedbackSettingsImportError('Feedback settings could not be saved.', { cause: error })
+      throw error
     }
   }
 }

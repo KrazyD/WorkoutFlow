@@ -101,6 +101,7 @@ class EmptyActiveWorkoutSessionRepository
   async save() {}
   async update() {}
   async complete() {}
+  async updateExerciseWeight() {}
   async clear() {}
 }
 

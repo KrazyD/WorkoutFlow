@@ -1,3 +1,4 @@
+import { isValidSetCount } from '../../domain/resolve-workout-template'
 import type { WorkoutTemplateStep } from '../../domain/workout-template'
 import type {
   CreateWorkoutTemplateInput,
@@ -37,6 +38,15 @@ export function validateWorkoutTemplateForm(
 
   if (values.steps.length === 0) {
     errors.steps = 'Добавьте хотя бы один шаг.'
+  }
+
+  for (const step of values.steps) {
+    if (step.type === 'rest') continue
+    const series = step.type === 'superset' ? step.series : [step]
+    if (step.type === 'superset' && series.length < 2)
+      errors.steps = 'Добавьте в суперсет хотя бы два упражнения.'
+    if (series.some((item) => !isValidSetCount(item.setCount ?? 1)))
+      errors.steps = 'Число подходов должно быть целым от 1 до 100.'
   }
 
   if (errors.name || errors.steps) {

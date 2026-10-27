@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  setSessionExerciseWeight,
   createActiveWorkoutSession,
   startWorkout,
   type ActiveWorkoutSession,
@@ -48,6 +49,9 @@ class MemoryRepository implements ActiveWorkoutSessionRepository {
   async complete(session: ActiveWorkoutSession) {
     this.session = session
   }
+  async updateExerciseWeight(session: ActiveWorkoutSession, exerciseId: string, weightKg: number | null) {
+    this.session = setSessionExerciseWeight(session, exerciseId, weightKg)
+  }
   async clear() {
     this.session = undefined
   }
@@ -73,7 +77,7 @@ describe('active workout session', () => {
     renderScreen()
     expect(await screen.findByText('Шаг 1 из 3')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Жим ногами' })).toBeInTheDocument()
-    expect(screen.getByText('Отдых — 1 минута 30 секунд')).toBeInTheDocument()
+    expect(within(screen.getByRole('complementary', { name: 'Следующее упражнение' })).getByText('Тяга верхнего блока')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Выполнено' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Завершить отдых' })).not.toBeInTheDocument()
   })
@@ -341,5 +345,43 @@ describe('rest-finished feedback', () => {
     expect(await screen.findByText('Шаг 3 из 3')).toBeInTheDocument()
     expect(feedback.audioService.playRestFinishedSignal).not.toHaveBeenCalled()
     expect(feedback.vibrationService.vibrateRestFinished).not.toHaveBeenCalled()
+  })
+})
+
+describe('working weight editor', () => {
+  it('sets, changes and clears weight, retaining the session after reload', async () => {
+    const repository = new MemoryRepository()
+    const view = render(<WorkoutSessionScreen repository={repository} navigate={vi.fn()} now={() => 2_000} />)
+    await screen.findByText('Вес не указан')
+    for (const input of ['59,1', '40.5', '']) {
+      fireEvent.click(screen.getByRole('button', { name: 'Изменить вес' }))
+      fireEvent.change(screen.getByLabelText('Вес, кг'), { target: { value: input } })
+      fireEvent.click(screen.getByRole('button', { name: 'Сохранить вес' }))
+      await waitFor(() => expect(screen.queryByLabelText('Вес, кг')).not.toBeInTheDocument())
+      expect(screen.getByRole('region', { name: 'Рабочий вес' })).toHaveTextContent(input === '' ? 'Вес не указан' : input === '59,1' ? '59,1 кг' : '40,5 кг')
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Изменить вес' }))
+    fireEvent.change(screen.getByLabelText('Вес, кг'), { target: { value: '20' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить вес' }))
+    await screen.findByText('20 кг')
+    view.unmount()
+    renderScreen(repository)
+    expect(await screen.findByText('20 кг')).toBeInTheDocument()
+  })
+
+  it('rejects invalid input and reports persistence failure without changing the weight', async () => {
+    const repository = new MemoryRepository()
+    vi.spyOn(repository, 'updateExerciseWeight').mockRejectedValue(new Error('disk full'))
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    renderScreen(repository)
+    fireEvent.click(await screen.findByRole('button', { name: 'Изменить вес' }))
+    fireEvent.change(screen.getByLabelText('Вес, кг'), { target: { value: '-1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить вес' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('неотрицательный')
+    expect(repository.updateExerciseWeight).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('Вес, кг'), { target: { value: '59.1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить вес' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось сохранить вес')
+    expect(screen.getByText('Вес не указан')).toBeInTheDocument()
   })
 })

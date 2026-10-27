@@ -1,7 +1,11 @@
+import { resolveWorkoutTemplate } from '../../domain/resolve-workout-template'
+import { ScrollToSaveButton } from '../../shared/ScrollToSaveButton'
+import { BlockFields } from './SeriesFields'
 import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from 'react'
@@ -16,7 +20,6 @@ import {
   createActiveWorkoutSession,
   startWorkout,
   type ActiveWorkoutSession,
-  type WorkoutTemplate,
 } from '../../domain/workout-session'
 import type { ExerciseRepository } from '../exercises/exercise-repository'
 import { formatRestDuration } from '../rest-presets/rest-duration'
@@ -73,6 +76,7 @@ const emptyActiveSessionRepository: ActiveWorkoutSessionRepository = {
   save: async () => undefined,
   update: async () => undefined,
   complete: async () => undefined,
+  updateExerciseWeight: async () => undefined,
   clear: async () => undefined,
 }
 
@@ -114,6 +118,8 @@ export function WorkoutTemplatesScreen({
   const [formValues, setFormValues] =
     useState<WorkoutTemplateFormValues>(emptyForm)
   const [formErrors, setFormErrors] = useState<WorkoutTemplateFormErrors>({})
+  const saveButton = useRef<HTMLButtonElement>(null)
+  const [pickerTarget, setPickerTarget] = useState<string>()
   const [picker, setPicker] = useState<Picker>(null)
   const [templateToRemove, setTemplateToRemove] =
     useState<WorkoutTemplateRecord | null>(null)
@@ -121,7 +127,9 @@ export function WorkoutTemplatesScreen({
   const [activeSession, setActiveSession] = useState<ActiveWorkoutSession>()
   const [templateToStart, setTemplateToStart] =
     useState<WorkoutTemplateRecord | null>(null)
-  const [feedbackSettings, setFeedbackSettings] = useState(() => feedbackSettingsStore.load())
+  const [feedbackSettings, setFeedbackSettings] = useState(() =>
+    feedbackSettingsStore.load(),
+  )
   const [audioWarning, setAudioWarning] = useState(false)
 
   const exerciseById = useMemo(
@@ -140,13 +148,17 @@ export function WorkoutTemplatesScreen({
 
   const loadData = useCallback(async () => {
     try {
-      const [storedTemplates, storedExercises, storedRestPresets, storedSession] =
-        await Promise.all([
-          repository.getAll(),
-          exerciseRepository.getAll(),
-          restPresetRepository.getAll(),
-          activeWorkoutSessionRepository.get(),
-        ])
+      const [
+        storedTemplates,
+        storedExercises,
+        storedRestPresets,
+        storedSession,
+      ] = await Promise.all([
+        repository.getAll(),
+        exerciseRepository.getAll(),
+        restPresetRepository.getAll(),
+        activeWorkoutSessionRepository.get(),
+      ])
       setTemplates(storedTemplates)
       setExercises(storedExercises)
       setRestPresets(storedRestPresets)
@@ -163,7 +175,8 @@ export function WorkoutTemplatesScreen({
   }, [
     exerciseRepository,
     repository,
-    restPresetRepository, activeWorkoutSessionRepository,
+    restPresetRepository,
+    activeWorkoutSessionRepository,
     showRepositoryError,
   ])
 
@@ -176,15 +189,22 @@ export function WorkoutTemplatesScreen({
       restPresetRepository.getAll(),
       activeWorkoutSessionRepository.get(),
     ])
-      .then(([storedTemplates, storedExercises, storedRestPresets, storedSession]) => {
-        if (isActive) {
-          setTemplates(storedTemplates)
-          setExercises(storedExercises)
-          setRestPresets(storedRestPresets)
-          setActiveSession(storedSession)
-          setRepositoryError(null)
-        }
-      })
+      .then(
+        ([
+          storedTemplates,
+          storedExercises,
+          storedRestPresets,
+          storedSession,
+        ]) => {
+          if (isActive) {
+            setTemplates(storedTemplates)
+            setExercises(storedExercises)
+            setRestPresets(storedRestPresets)
+            setActiveSession(storedSession)
+            setRepositoryError(null)
+          }
+        },
+      )
       .catch((error: unknown) => {
         if (isActive) {
           showRepositoryError(
@@ -246,15 +266,24 @@ export function WorkoutTemplatesScreen({
     setFormValues(emptyForm)
     setFormErrors({})
     setPicker(null)
+    setPickerTarget(undefined)
   }
 
   const appendStep = (step: WorkoutTemplateStep) => {
     setFormValues((current) => ({
       ...current,
-      steps: addStep(current.steps, step),
+      steps:
+        pickerTarget && step.type === 'exercise'
+          ? current.steps.map((block) =>
+              block.id === pickerTarget && block.type === 'superset'
+                ? { ...block, series: [...block.series, step] }
+                : block,
+            )
+          : addStep(current.steps, step),
     }))
     setFormErrors((current) => ({ ...current, steps: undefined }))
     setPicker(null)
+    setPickerTarget(undefined)
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -314,54 +343,54 @@ export function WorkoutTemplatesScreen({
       return exerciseById.get(step.exerciseId)?.name ?? 'Удалённое упражнение'
     }
 
+    if (step.type === 'superset')
+      return (
+        'Суперсет: ' +
+        step.series
+          .map(
+            (item) =>
+              exerciseById.get(item.exerciseId)?.name ?? 'Удалённое упражнение',
+          )
+          .join(' + ')
+      )
     const preset = restPresetById.get(step.restPresetId)
     return preset
       ? formatRestDuration(preset.durationSeconds)
       : 'Удалённый вариант отдыха'
   }
 
-  const resolveTemplateSnapshot = (
-    template: WorkoutTemplateRecord,
-  ): WorkoutTemplate | undefined => {
-    const steps: WorkoutTemplate['steps'][number][] = []
-    for (const step of template.steps) {
-      if (step.type === 'exercise') {
-        const exercise = exerciseById.get(step.exerciseId)
-        if (!exercise) return undefined
-        steps.push({ type: 'exercise', exercise })
-      } else {
-        const restPreset = restPresetById.get(step.restPresetId)
-        if (!restPreset) return undefined
-        steps.push({ type: 'rest', restPreset })
-      }
-    }
-    return { id: template.id, name: template.name, steps }
-  }
-
   const startTemplate = async (template: WorkoutTemplateRecord) => {
-    if (feedbackSettings.soundEnabled) {
-      const audioPrepared = await audioService.prepare()
-      setAudioWarning(!audioPrepared.success)
-    }
-    const snapshot = resolveTemplateSnapshot(template)
-    if (!snapshot) {
-      setRepositoryError('Не удалось начать тренировку: один из шагов удалён из справочника.')
-      return
-    }
-    const created = createActiveWorkoutSession(snapshot)
-    if (!created.success) return
-    const started = startWorkout(created.value, now())
-    if (!started.success) return
-
     setIsSaving(true)
     setRepositoryError(null)
     try {
+      if (feedbackSettings.soundEnabled) {
+        const audioPrepared = await audioService.prepare()
+        setAudioWarning(!audioPrepared.success)
+      }
+      const snapshot = resolveWorkoutTemplate(
+        template,
+        await exerciseRepository.getAll(),
+        restPresets,
+      )
+      if (!snapshot) {
+        setRepositoryError(
+          'Не удалось начать тренировку: проверьте упражнения, отдых и число подходов.',
+        )
+        return
+      }
+      const created = createActiveWorkoutSession(snapshot)
+      if (!created.success) return
+      const started = startWorkout(created.value, now())
+      if (!started.success) return
       await activeWorkoutSessionRepository.save(started.value)
       setActiveSession(started.value)
       setTemplateToStart(null)
       navigate('/workout-session')
     } catch (error) {
-      showRepositoryError(error, 'Не удалось начать тренировку. Попробуйте ещё раз.')
+      showRepositoryError(
+        error,
+        'Не удалось начать тренировку. Попробуйте ещё раз.',
+      )
     } finally {
       setIsSaving(false)
     }
@@ -383,7 +412,10 @@ export function WorkoutTemplatesScreen({
       setActiveSession(undefined)
       await startTemplate(templateToStart)
     } catch (error) {
-      showRepositoryError(error, 'Не удалось заменить активную тренировку. Попробуйте ещё раз.')
+      showRepositoryError(
+        error,
+        'Не удалось заменить активную тренировку. Попробуйте ещё раз.',
+      )
       setIsSaving(false)
     }
   }
@@ -398,7 +430,11 @@ export function WorkoutTemplatesScreen({
         <RepositoryErrorAlert message={repositoryError} />
       ) : null}
 
-      {audioWarning ? <p role="status" className="mt-4 text-sm text-amber-300">Браузер может не воспроизвести сигнал автоматически.</p> : null}
+      {audioWarning ? (
+        <p role="status" className="mt-4 text-sm text-amber-300">
+          Браузер может не воспроизвести сигнал автоматически.
+        </p>
+      ) : null}
 
       <WorkoutFeedbackSettingsPanel
         settings={feedbackSettings}
@@ -409,22 +445,63 @@ export function WorkoutTemplatesScreen({
       />
 
       {activeSession && activeSession.status !== 'completed' ? (
-        <section className="mt-6 rounded-2xl border border-lime-900 bg-lime-950/30 p-5" aria-label="Незавершённая тренировка">
+        <section
+          className="mt-6 rounded-2xl border border-lime-900 bg-lime-950/30 p-5"
+          aria-label="Незавершённая тренировка"
+        >
           <p className="text-sm text-lime-300">Есть незавершённая тренировка</p>
-          <h2 className="mt-1 text-lg font-semibold">{activeSession.templateSnapshot.name}</h2>
-          <p className="mt-1 text-sm text-slate-400">Шаг {activeSession.currentStepIndex + 1} из {activeSession.templateSnapshot.steps.length}</p>
-          <button type="button" className="mt-3 min-h-11 font-semibold text-lime-300" onClick={() => navigate('/workout-session')}>Продолжить</button>
+          <h2 className="mt-1 text-lg font-semibold">
+            {activeSession.templateSnapshot.name}
+          </h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Шаг {activeSession.currentStepIndex + 1} из{' '}
+            {activeSession.templateSnapshot.steps.length}
+          </p>
+          <button
+            type="button"
+            className="mt-3 min-h-11 font-semibold text-lime-300"
+            onClick={() => navigate('/workout-session')}
+          >
+            Продолжить
+          </button>
         </section>
       ) : null}
 
       {templateToStart ? (
-        <section role="alertdialog" aria-labelledby="replace-session-title" className="mt-6 rounded-2xl border border-amber-800 bg-amber-950/30 p-5">
-          <h2 id="replace-session-title" className="font-semibold">Уже есть незавершённая тренировка</h2>
-          <p className="mt-2 text-sm text-slate-300">Чтобы начать «{templateToStart.name}», сначала завершите текущую.</p>
+        <section
+          role="alertdialog"
+          aria-labelledby="replace-session-title"
+          className="mt-6 rounded-2xl border border-amber-800 bg-amber-950/30 p-5"
+        >
+          <h2 id="replace-session-title" className="font-semibold">
+            Уже есть незавершённая тренировка
+          </h2>
+          <p className="mt-2 text-sm text-slate-300">
+            Чтобы начать «{templateToStart.name}», сначала завершите текущую.
+          </p>
           <div className="mt-4 flex flex-wrap gap-3">
-            <button type="button" className="min-h-11 rounded-xl border border-slate-700 px-4" onClick={() => navigate('/workout-session')}>Продолжить текущую</button>
-            <button type="button" disabled={isSaving} className="min-h-11 rounded-xl bg-red-500 px-4 font-semibold" onClick={() => void replaceActiveSession()}>Завершить и начать новую</button>
-            <button type="button" className="min-h-11 px-4" onClick={() => setTemplateToStart(null)}>Отмена</button>
+            <button
+              type="button"
+              className="min-h-11 rounded-xl border border-slate-700 px-4"
+              onClick={() => navigate('/workout-session')}
+            >
+              Продолжить текущую
+            </button>
+            <button
+              type="button"
+              disabled={isSaving}
+              className="min-h-11 rounded-xl bg-red-500 px-4 font-semibold"
+              onClick={() => void replaceActiveSession()}
+            >
+              Завершить и начать новую
+            </button>
+            <button
+              type="button"
+              className="min-h-11 px-4"
+              onClick={() => setTemplateToStart(null)}
+            >
+              Отмена
+            </button>
           </div>
         </section>
       ) : null}
@@ -488,9 +565,30 @@ export function WorkoutTemplatesScreen({
                       className="rounded-xl border border-slate-700 bg-slate-950 p-4"
                     >
                       <p className="text-xs font-semibold tracking-wide text-slate-400 uppercase">
-                        {step.type === 'exercise' ? 'Упражнение' : 'Отдых'}
+                        {step.type === 'exercise'
+                          ? 'Серия'
+                          : step.type === 'superset'
+                            ? 'Суперсет'
+                            : 'Отдых'}
                       </p>
                       <p className="mt-1 font-medium">{getStepName(step)}</p>
+                      <BlockFields
+                        step={step}
+                        presets={restPresets}
+                        exerciseName={getStepName}
+                        onChange={(updated) =>
+                          setFormValues((current) => ({
+                            ...current,
+                            steps: current.steps.map((item) =>
+                              item.id === step.id ? updated : item,
+                            ),
+                          }))
+                        }
+                        onAddExercise={() => {
+                          setPickerTarget(step.id)
+                          setPicker('exercise')
+                        }}
+                      />
                       <div className="mt-3 flex flex-wrap gap-3">
                         <button
                           type="button"
@@ -543,17 +641,32 @@ export function WorkoutTemplatesScreen({
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={() => setPicker('exercise')}
+                onClick={() => {
+                  setPickerTarget(undefined)
+                  setPicker('exercise')
+                }}
                 className="min-h-11 rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold"
               >
                 Добавить упражнение
               </button>
               <button
                 type="button"
-                onClick={() => setPicker('rest')}
+                onClick={() => {
+                  setPickerTarget(undefined)
+                  setPicker('rest')
+                }}
                 className="min-h-11 rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold"
               >
                 Добавить отдых
+              </button>
+              <button
+                type="button"
+                className="min-h-11 rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold"
+                onClick={() =>
+                  appendStep({ id: createId(), type: 'superset', series: [] })
+                }
+              >
+                Добавить суперсет
               </button>
             </div>
 
@@ -640,6 +753,7 @@ export function WorkoutTemplatesScreen({
 
             <div className="flex gap-3">
               <button
+                ref={saveButton}
                 type="submit"
                 disabled={isSaving}
                 className="min-h-11 rounded-xl bg-lime-300 px-5 py-2 font-semibold text-slate-950 disabled:opacity-50"
@@ -656,6 +770,7 @@ export function WorkoutTemplatesScreen({
               </button>
             </div>
           </form>
+          <ScrollToSaveButton target={saveButton} />
         </section>
       ) : null}
 
@@ -669,57 +784,66 @@ export function WorkoutTemplatesScreen({
           />
         ) : (
           <ul className="space-y-3">
-            {templates.map((template) => (
-              <li
-                key={template.id}
-                className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5"
-              >
-                <h2 className="text-lg font-semibold">{template.name}</h2>
-                <p className="mt-1 text-sm text-slate-400">
-                  {stepCountLabel(template.steps.length)}
-                </p>
-                <p className="mt-2 truncate text-sm text-slate-400">
-                  {template.steps.length === 0
-                    ? 'Пустой шаблон'
-                    : template.steps.slice(0, 4).map(getStepName).join(' → ') +
-                      (template.steps.length > 4 ? ' → …' : '')}
-                </p>
-                {templateToRemove?.id === template.id ? (
-                  <DeleteConfirmation
-                    labelId={`remove-workout-${template.id}`}
-                    message={`Удалить тренировку «${template.name}»?`}
-                    isBusy={isSaving}
-                    onConfirm={() => void handleRemove()}
-                    onCancel={() => setTemplateToRemove(null)}
-                  />
-                ) : (
-                  <div className="mt-4 flex gap-4">
-                    <button
-                      type="button"
-                      disabled={template.steps.length === 0 || isSaving}
-                      onClick={() => requestStart(template)}
-                      className="min-h-11 text-sm font-semibold text-lime-300 disabled:text-slate-600"
-                    >
-                      Начать
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void openEditForm(template.id)}
-                      className="min-h-11 text-sm font-semibold text-lime-300"
-                    >
-                      Изменить
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTemplateToRemove(template)}
-                      className="min-h-11 text-sm font-semibold text-red-300"
-                    >
-                      Удалить
-                    </button>
-                  </div>
-                )}
-              </li>
-            ))}
+            {templates
+              .filter(
+                (template) =>
+                  formMode?.type !== 'edit' ||
+                  template.id !== formMode.templateId,
+              )
+              .map((template) => (
+                <li
+                  key={template.id}
+                  className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5"
+                >
+                  <h2 className="text-lg font-semibold">{template.name}</h2>
+                  <p className="mt-1 text-sm text-slate-400">
+                    {stepCountLabel(template.steps.length)}
+                  </p>
+                  <p className="mt-2 truncate text-sm text-slate-400">
+                    {template.steps.length === 0
+                      ? 'Пустой шаблон'
+                      : template.steps
+                          .slice(0, 4)
+                          .map(getStepName)
+                          .join(' → ') +
+                        (template.steps.length > 4 ? ' → …' : '')}
+                  </p>
+                  {templateToRemove?.id === template.id ? (
+                    <DeleteConfirmation
+                      labelId={`remove-workout-${template.id}`}
+                      message={`Удалить тренировку «${template.name}»?`}
+                      isBusy={isSaving}
+                      onConfirm={() => void handleRemove()}
+                      onCancel={() => setTemplateToRemove(null)}
+                    />
+                  ) : (
+                    <div className="mt-4 flex gap-4">
+                      <button
+                        type="button"
+                        disabled={template.steps.length === 0 || isSaving}
+                        onClick={() => requestStart(template)}
+                        className="min-h-11 text-sm font-semibold text-lime-300 disabled:text-slate-600"
+                      >
+                        Начать
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void openEditForm(template.id)}
+                        className="min-h-11 text-sm font-semibold text-lime-300"
+                      >
+                        Изменить
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTemplateToRemove(template)}
+                        className="min-h-11 text-sm font-semibold text-red-300"
+                      >
+                        Удалить
+                      </button>
+                    </div>
+                  )}
+                </li>
+              ))}
           </ul>
         )}
       </section>
