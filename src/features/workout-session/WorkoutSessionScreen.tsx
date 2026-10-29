@@ -1,3 +1,6 @@
+import { NumericValueCard } from '../../shared/NumericValueCard'
+import { parseWorkingReps } from '../../domain/working-reps'
+import { RestTimer } from './RestTimer'
 import {
   parseWorkingWeight,
   formatWorkingWeight,
@@ -12,13 +15,13 @@ import {
   getNextExercise,
   getSetProgress,
   setSessionExerciseWeight,
-  getRemainingRestSeconds,
+  setSessionExerciseReps,
+  getWorkingSetProgress,
   isRestFinished,
   type ActiveWorkoutSession,
 } from '../../domain/workout-session'
 import { RepositoryErrorAlert } from '../../shared/catalog-ui'
 import type { ActiveWorkoutSessionRepository } from './active-workout-session-repository'
-import { formatCountdown } from './countdown'
 import {
   workoutAudioService,
   type WorkoutAudioService,
@@ -57,9 +60,9 @@ export function WorkoutSessionScreen({
   feedbackSettingsStore = workoutFeedbackSettingsStore,
   feedbackDeduplicator = restFeedbackDeduplicator,
 }: WorkoutSessionScreenProps) {
-  const [editingWeight, setEditingWeight] = useState(false)
-  const [weightInput, setWeightInput] = useState('')
-  const [weightError, setWeightError] = useState<string>()
+  const [editingField, setEditingField] = useState<'weight' | 'reps' | null>(
+    null,
+  )
   const [session, setSession] = useState<ActiveWorkoutSession>()
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -259,31 +262,20 @@ export function WorkoutSessionScreen({
     }
   }
 
-  const saveWeight = async () => {
-    if (!session || transitionInFlight.current) return
+  const saveValue = async (field: 'weight' | 'reps', value: number | null) => {
+    if (!session || transitionInFlight.current) throw new Error('Session busy')
     const step = getCurrentStep(session)
-    if (step?.type !== 'exercise') return
-    const parsed = parseWorkingWeight(weightInput)
-    if (!parsed.success) {
-      setWeightError(parsed.message)
-      return
-    }
+    if (step?.type !== 'exercise') throw new Error('No exercise')
     transitionInFlight.current = true
     setIsSaving(true)
-    setWeightError(undefined)
     try {
-      await repository.updateExerciseWeight(
-        session,
-        step.exercise.id,
-        parsed.value,
-      )
-      setSession(
-        setSessionExerciseWeight(session, step.exercise.id, parsed.value),
-      )
-      setEditingWeight(false)
-    } catch (cause) {
-      console.error('Could not save working weight.', cause)
-      setWeightError('Не удалось сохранить вес. Попробуйте ещё раз.')
+      if (field === 'weight') {
+        await repository.updateExerciseWeight(session, step.exercise.id, value)
+        setSession(setSessionExerciseWeight(session, step.exercise.id, value))
+      } else {
+        await repository.updateExerciseReps(session, step.exercise.id, value)
+        setSession(setSessionExerciseReps(session, step.exercise.id, value))
+      }
     } finally {
       transitionInFlight.current = false
       setIsSaving(false)
@@ -326,19 +318,19 @@ export function WorkoutSessionScreen({
     )
   }
 
-  const totalSteps = session.templateSnapshot.steps.length
+  const progress = getWorkingSetProgress(session)
   const currentStep = getCurrentStep(session)
   const nextStep = getNextExercise(session)
 
   return (
-    <main className="min-h-dvh bg-slate-950 px-4 py-8 text-slate-50 sm:px-6">
+    <main className="session-screen bg-slate-950 text-slate-50">
       <div className="mx-auto max-w-xl">
         <header className="flex items-start justify-between gap-4">
           <div>
             <p className="text-xs font-semibold tracking-[0.2em] text-lime-300 uppercase">
               Workout Flow
             </p>
-            <h1 className="mt-2 text-2xl font-bold">
+            <h1 className="mt-2 text-xl font-bold">
               {session.templateSnapshot.name}
             </h1>
           </div>
@@ -392,7 +384,9 @@ export function WorkoutSessionScreen({
             </p>
             <h2 className="mt-3 text-2xl font-bold">Тренировка завершена</h2>
             <p className="mt-3 text-lg">{session.templateSnapshot.name}</p>
-            <p className="mt-2 text-slate-400">Выполнено шагов: {totalSteps}</p>
+            <p className="mt-2 text-slate-400">
+              Выполнено подходов: {progress.total}
+            </p>
             <button
               type="button"
               disabled={isSaving}
@@ -403,27 +397,28 @@ export function WorkoutSessionScreen({
             </button>
           </section>
         ) : currentStep ? (
-          <section className="mt-10">
+          <section className="mt-6">
             <p className="text-sm font-semibold text-slate-400">
-              Шаг {session.currentStepIndex + 1} из {totalSteps}
+              {currentStep.type === 'exercise'
+                ? `Рабочий подход ${progress.current} из ${progress.total}`
+                : `Выполнено ${progress.completed} из ${progress.total} подходов`}
             </p>
-            <p className="mt-6 text-sm font-semibold tracking-wide text-lime-300 uppercase">
+            <progress
+              className="workout-progress"
+              aria-label="Выполнено подходов"
+              max={Math.max(1, progress.total)}
+              value={progress.completed}
+            />
+            <p className="mt-5 text-sm font-semibold tracking-wide text-lime-300 uppercase">
               {currentStep.type === 'exercise' ? 'Упражнение' : 'Отдых'}
             </p>
-            <h2 className="mt-3 text-4xl font-bold tracking-tight">
+            <h2 className="mt-2 text-3xl font-bold tracking-tight">
               {currentStep.type === 'exercise'
                 ? currentStep.exercise.name
                 : currentStep.restPreset.name}
             </h2>
             {currentStep.type === 'rest' && session.status === 'rest' ? (
-              <p
-                className="mt-6 text-center text-7xl font-bold tabular-nums tracking-tight text-white"
-                aria-label="Осталось времени"
-              >
-                {formatCountdown(
-                  getRemainingRestSeconds(session.restEndsAt, currentTime),
-                )}
-              </p>
+              <RestTimer session={session} now={currentTime} />
             ) : null}
             {currentStep.type === 'exercise' ? (
               <>
@@ -432,101 +427,58 @@ export function WorkoutSessionScreen({
                   {getSetProgress(currentStep).total}
                 </p>
                 {getSetProgress(currentStep).isLast ? (
-                  <p className="mt-2 font-semibold text-lime-300">
-                    Последний подход
-                  </p>
+                  <p className="last-set-badge">Последний подход</p>
                 ) : null}
-                <section
-                  aria-label="Рабочий вес"
-                  className="mt-6 rounded-2xl bg-slate-900 p-5"
-                >
-                  <h3 className="text-sm text-slate-400">Рабочий вес</h3>
-                  <p className="mt-2 text-xl">
-                    {formatWorkingWeight(currentStep.exercise.lastWeightKg)}
-                  </p>
-                  {editingWeight ? (
-                    <form
-                      className="mt-3 space-y-3"
-                      onSubmit={(event) => {
-                        event.preventDefault()
-                        void saveWeight()
-                      }}
-                    >
-                      <label className="block">
-                        Вес, кг
-                        <input
-                          autoFocus
-                          type="text"
-                          inputMode="decimal"
-                          value={weightInput}
-                          aria-invalid={Boolean(weightError)}
-                          aria-describedby={
-                            weightError ? 'weight-error' : undefined
-                          }
-                          className="mt-2 min-h-11 w-full rounded-xl border border-slate-700 px-3"
-                          onChange={(event) =>
-                            setWeightInput(event.target.value)
-                          }
-                        />
-                      </label>
-                      {weightError ? (
-                        <p
-                          id="weight-error"
-                          role="alert"
-                          className="text-red-300"
-                        >
-                          {weightError}
-                        </p>
-                      ) : null}
-                      <div className="flex flex-wrap gap-4">
-                        <button
-                          type="submit"
-                          disabled={isSaving}
-                          className="min-h-11 text-lime-300"
-                        >
-                          Сохранить вес
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isSaving}
-                          className="min-h-11"
-                          onClick={() => setWeightInput('')}
-                        >
-                          Очистить
-                        </button>
-                        <button
-                          type="button"
-                          disabled={isSaving}
-                          className="min-h-11"
-                          onClick={() => setEditingWeight(false)}
-                        >
-                          Отмена
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={isSaving}
-                      className="mt-2 min-h-11 text-lime-300"
-                      onClick={() => {
-                        setWeightInput(
-                          currentStep.exercise.lastWeightKg
-                            ?.toString()
-                            .replace('.', ',') ?? '',
-                        )
-                        setWeightError(undefined)
-                        setEditingWeight(true)
-                      }}
-                    >
-                      Изменить вес
-                    </button>
-                  )}
-                </section>
+                <div className="value-grid">
+                  <NumericValueCard
+                    label="Рабочий вес"
+                    value={currentStep.exercise.lastWeightKg}
+                    formattedValue={formatWorkingWeight(
+                      currentStep.exercise.lastWeightKg,
+                    )}
+                    editLabel="Изменить вес"
+                    inputLabel="Вес, кг"
+                    saveLabel="Сохранить вес"
+                    inputMode="decimal"
+                    editing={editingField === 'weight'}
+                    disabled={
+                      isSaving ||
+                      (editingField !== null && editingField !== 'weight')
+                    }
+                    parse={parseWorkingWeight}
+                    onEditingChange={(editing) =>
+                      setEditingField(editing ? 'weight' : null)
+                    }
+                    onSave={(value) => saveValue('weight', value)}
+                    saveError="Не удалось сохранить вес. Попробуйте ещё раз."
+                  />
+                  <NumericValueCard
+                    label="Повторения"
+                    value={currentStep.exercise.lastReps}
+                    formattedValue={
+                      currentStep.exercise.lastReps?.toString() ?? 'Не указаны'
+                    }
+                    editLabel="Изменить повторения"
+                    inputLabel="Количество повторений"
+                    saveLabel="Сохранить повторения"
+                    inputMode="numeric"
+                    editing={editingField === 'reps'}
+                    disabled={
+                      isSaving ||
+                      (editingField !== null && editingField !== 'reps')
+                    }
+                    parse={parseWorkingReps}
+                    onEditingChange={(editing) =>
+                      setEditingField(editing ? 'reps' : null)
+                    }
+                    onSave={(value) => saveValue('reps', value)}
+                    saveError="Не удалось сохранить повторения. Попробуйте ещё раз."
+                  />
+                </div>
               </>
             ) : null}
             {currentStep.type === 'rest' ? (
-              <div className="mt-8 grid gap-3 sm:grid-cols-2">
+              <div className="mt-5 grid grid-cols-2 gap-3">
                 <button
                   type="button"
                   disabled={isSaving}
@@ -538,6 +490,7 @@ export function WorkoutSessionScreen({
                 <button
                   type="button"
                   disabled={isSaving}
+                  aria-label={restCompletionFailed ? 'Повторить' : 'Пропустить отдых'}
                   className="min-h-14 rounded-2xl bg-lime-300 px-5 text-lg font-bold text-slate-950 disabled:opacity-50"
                   onClick={advance}
                 >
@@ -545,21 +498,21 @@ export function WorkoutSessionScreen({
                     ? 'Сохранение…'
                     : restCompletionFailed
                       ? 'Повторить'
-                      : 'Пропустить отдых'}
+                      : 'Пропустить'}
                 </button>
               </div>
             ) : (
               <button
                 type="button"
-                disabled={isSaving || editingWeight}
-                className="mt-8 min-h-16 w-full rounded-2xl bg-lime-300 px-6 text-xl font-bold text-slate-950 disabled:opacity-50"
+                disabled={isSaving || editingField !== null}
+                className="mt-5 min-h-16 w-full rounded-2xl bg-lime-300 px-6 text-xl font-bold text-slate-950 disabled:opacity-50"
                 onClick={advance}
               >
                 {isSaving ? 'Сохранение…' : 'Выполнено'}
               </button>
             )}
             <aside
-              className="mt-8 rounded-2xl bg-slate-900 p-5"
+              className="mt-5 rounded-3xl border border-slate-800 bg-slate-900 p-4"
               aria-label="Следующее упражнение"
             >
               {nextStep ? (

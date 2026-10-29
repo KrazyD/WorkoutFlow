@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   setSessionExerciseWeight,
+  setSessionExerciseReps,
   createActiveWorkoutSession,
   startWorkout,
   type ActiveWorkoutSession,
@@ -52,6 +53,9 @@ class MemoryRepository implements ActiveWorkoutSessionRepository {
   async updateExerciseWeight(session: ActiveWorkoutSession, exerciseId: string, weightKg: number | null) {
     this.session = setSessionExerciseWeight(session, exerciseId, weightKg)
   }
+  async updateExerciseReps(session: ActiveWorkoutSession, exerciseId: string, reps: number | null) {
+    this.session = setSessionExerciseReps(session, exerciseId, reps)
+  }
   async clear() {
     this.session = undefined
   }
@@ -75,7 +79,7 @@ const renderScreen = (
 describe('active workout session', () => {
   it('shows exercise progress and the next step', async () => {
     renderScreen()
-    expect(await screen.findByText('Шаг 1 из 3')).toBeInTheDocument()
+    expect(await screen.findByText('Рабочий подход 1 из 2')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Жим ногами' })).toBeInTheDocument()
     expect(within(screen.getByRole('complementary', { name: 'Следующее упражнение' })).getByText('Тяга верхнего блока')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Выполнено' })).toBeInTheDocument()
@@ -85,9 +89,9 @@ describe('active workout session', () => {
   it('persists an exercise transition before showing rest', async () => {
     const { repository } = renderScreen()
     const update = vi.spyOn(repository, 'update')
-    await screen.findByText('Шаг 1 из 3')
+    await screen.findByText('Рабочий подход 1 из 2')
     fireEvent.click(screen.getByRole('button', { name: 'Выполнено' }))
-    expect(await screen.findByText('Шаг 2 из 3')).toBeInTheDocument()
+    expect(await screen.findByText('Выполнено 1 из 2 подходов')).toBeInTheDocument()
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ status: 'rest', currentStepIndex: 1 }))
     expect(screen.getByRole('heading', { name: 'Обычный' })).toBeInTheDocument()
     expect(screen.getByText('01:30')).toBeInTheDocument()
@@ -101,22 +105,22 @@ describe('active workout session', () => {
     vi.spyOn(repository, 'update').mockRejectedValue(new Error('write failed'))
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     renderScreen(repository)
-    await screen.findByText('Шаг 1 из 3')
+    await screen.findByText('Рабочий подход 1 из 2')
     fireEvent.click(screen.getByRole('button', { name: 'Выполнено' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Текущий шаг не изменён')
-    expect(screen.getByText('Шаг 1 из 3')).toBeInTheDocument()
+    expect(screen.getByText('Рабочий подход 1 из 2')).toBeInTheDocument()
   })
 
   it('finishes rest manually and completes after the final exercise', async () => {
     const { repository } = renderScreen()
     const complete = vi.spyOn(repository, 'complete')
-    await screen.findByText('Шаг 1 из 3')
+    await screen.findByText('Рабочий подход 1 из 2')
     fireEvent.click(screen.getByRole('button', { name: 'Выполнено' }))
     fireEvent.click(await screen.findByRole('button', { name: 'Пропустить отдых' }))
-    expect(await screen.findByText('Шаг 3 из 3')).toBeInTheDocument()
+    expect(await screen.findByText('Рабочий подход 2 из 2')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Выполнено' }))
     expect(await screen.findByRole('heading', { name: 'Тренировка завершена' })).toBeInTheDocument()
-    expect(screen.getByText('Выполнено шагов: 3')).toBeInTheDocument()
+    expect(screen.getByText('Выполнено подходов: 2')).toBeInTheDocument()
     expect(complete).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed', completedAt: 2_000 }))
   })
 
@@ -129,7 +133,7 @@ describe('active workout session', () => {
       restEndsAt: 91_000,
     })
     renderScreen(repository)
-    expect(await screen.findByText('Шаг 2 из 3')).toBeInTheDocument()
+    expect(await screen.findByText('Выполнено 1 из 2 подходов')).toBeInTheDocument()
     expect(screen.getByText('01:29')).toBeInTheDocument()
   })
 
@@ -147,7 +151,7 @@ describe('active workout session', () => {
 
   it('requires confirmation before abandoning the session', async () => {
     const { repository, navigate } = renderScreen()
-    await screen.findByText('Шаг 1 из 3')
+    await screen.findByText('Рабочий подход 1 из 2')
     fireEvent.click(screen.getByRole('button', { name: 'Выйти' }))
     const dialog = screen.getByRole('alertdialog')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Продолжить тренировку' }))
@@ -192,7 +196,7 @@ describe('rest countdown', () => {
 
     currentTime = 3_000
     await act(async () => vi.advanceTimersByTime(1_000))
-    expect(screen.getByText('Шаг 3 из 3')).toBeInTheDocument()
+    expect(screen.getByText('Рабочий подход 2 из 2')).toBeInTheDocument()
     expect(update).toHaveBeenCalledTimes(1)
 
     await act(async () => vi.advanceTimersByTime(5_000))
@@ -203,7 +207,7 @@ describe('rest countdown', () => {
     const repository = restingRepository(1_000)
     renderScreen(repository, vi.fn(), () => 2_000)
 
-    expect(await screen.findByText('Шаг 3 из 3')).toBeInTheDocument()
+    expect(await screen.findByText('Рабочий подход 2 из 2')).toBeInTheDocument()
     expect(repository.session).toMatchObject({ status: 'exercise', currentStepIndex: 2 })
   })
 
@@ -216,7 +220,7 @@ describe('rest countdown', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось завершить отдых')
     expect(screen.getByText('00:00')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
-    expect(await screen.findByText('Шаг 3 из 3')).toBeInTheDocument()
+    expect(await screen.findByText('Рабочий подход 2 из 2')).toBeInTheDocument()
     expect(update).toHaveBeenCalledTimes(2)
   })
 
@@ -251,7 +255,7 @@ describe('rest countdown', () => {
     const skipButton = screen.getByRole('button', { name: 'Пропустить отдых' })
     fireEvent.click(skipButton)
     fireEvent.click(skipButton)
-    expect(await screen.findByText('Шаг 3 из 3')).toBeInTheDocument()
+    expect(await screen.findByText('Рабочий подход 2 из 2')).toBeInTheDocument()
     expect(update).toHaveBeenCalledTimes(2)
   })
 
@@ -307,7 +311,7 @@ describe('rest-finished feedback', () => {
     const repository = restingRepository(1_000)
     const update = vi.spyOn(repository, 'update')
     render(<WorkoutSessionScreen repository={repository} navigate={vi.fn()} now={() => 2_000} {...feedback} />)
-    expect(await screen.findByText('Шаг 3 из 3')).toBeInTheDocument()
+    expect(await screen.findByText('Рабочий подход 2 из 2')).toBeInTheDocument()
     expect(feedback.audioService.playRestFinishedSignal).toHaveBeenCalledOnce()
     expect(feedback.vibrationService.vibrateRestFinished).toHaveBeenCalledOnce()
     expect(update).toHaveBeenCalledOnce()
@@ -316,7 +320,7 @@ describe('rest-finished feedback', () => {
   it('does not call disabled feedback or feedback on manual skip', async () => {
     const disabled = services({ soundEnabled: false, vibrationEnabled: false })
     render(<WorkoutSessionScreen repository={restingRepository(1_000)} navigate={vi.fn()} now={() => 2_000} {...disabled} />)
-    await screen.findByText('Шаг 3 из 3')
+    await screen.findByText('Рабочий подход 2 из 2')
     expect(disabled.audioService.playRestFinishedSignal).not.toHaveBeenCalled()
     expect(disabled.vibrationService.vibrateRestFinished).not.toHaveBeenCalled()
 
@@ -334,7 +338,7 @@ describe('rest-finished feedback', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     render(<WorkoutSessionScreen repository={repository} navigate={vi.fn()} now={() => 2_000} {...feedback} />)
     fireEvent.click(await screen.findByRole('button', { name: 'Повторить' }))
-    expect(await screen.findByText('Шаг 3 из 3')).toBeInTheDocument()
+    expect(await screen.findByText('Рабочий подход 2 из 2')).toBeInTheDocument()
     expect(feedback.audioService.playRestFinishedSignal).toHaveBeenCalledOnce()
     expect(feedback.vibrationService.vibrateRestFinished).toHaveBeenCalledOnce()
   })
@@ -342,7 +346,7 @@ describe('rest-finished feedback', () => {
   it('silently advances a restored rest older than five seconds', async () => {
     const feedback = services()
     render(<WorkoutSessionScreen repository={restingRepository(1_000)} navigate={vi.fn()} now={() => 7_001} {...feedback} />)
-    expect(await screen.findByText('Шаг 3 из 3')).toBeInTheDocument()
+    expect(await screen.findByText('Рабочий подход 2 из 2')).toBeInTheDocument()
     expect(feedback.audioService.playRestFinishedSignal).not.toHaveBeenCalled()
     expect(feedback.vibrationService.vibrateRestFinished).not.toHaveBeenCalled()
   })
@@ -383,5 +387,54 @@ describe('working weight editor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить вес' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось сохранить вес')
     expect(screen.getByText('Вес не указан')).toBeInTheDocument()
+  })
+})
+
+describe('repetitions editor', () => {
+  it('sets, changes, clears and restores repetitions while protecting an open editor', async () => {
+    const repository = new MemoryRepository()
+    const view = render(<WorkoutSessionScreen repository={repository} navigate={vi.fn()} now={() => 2_000} />)
+    await screen.findByText('Не указаны')
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+    for (const input of ['10', '12', '']) {
+      fireEvent.click(screen.getByRole('button', { name: 'Изменить повторения' }))
+      expect(screen.getByRole('button', { name: 'Выполнено' })).toBeDisabled()
+      const field = screen.getByLabelText('Количество повторений')
+      expect(field).toHaveAttribute('inputmode', 'numeric')
+      fireEvent.change(field, { target: { value: input } })
+      fireEvent.click(screen.getByRole('button', { name: 'Сохранить повторения' }))
+      await waitFor(() => expect(screen.queryByLabelText('Количество повторений')).not.toBeInTheDocument())
+      expect(screen.getByRole('region', { name: 'Повторения' })).toHaveTextContent(input || 'Не указаны')
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Изменить повторения' }))
+    fireEvent.change(screen.getByLabelText('Количество повторений'), { target: { value: '8' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить повторения' }))
+    await screen.findByText('8')
+    view.unmount()
+    renderScreen(repository)
+    expect(await screen.findByText('8')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Изменить повторения' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Очистить' }))
+    expect(screen.getByLabelText('Количество повторений')).toHaveValue('')
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }))
+    expect(screen.getByText('8')).toBeInTheDocument()
+  })
+
+  it('rejects invalid input and keeps the form open on persistence failure', async () => {
+    const repository = new MemoryRepository()
+    vi.spyOn(repository, 'updateExerciseReps').mockRejectedValue(new Error('disk full'))
+    renderScreen(repository)
+    fireEvent.click(await screen.findByRole('button', { name: 'Изменить повторения' }))
+    for (const value of ['0', '-2', '1.5', '1,5', 'text']) {
+      fireEvent.change(screen.getByLabelText('Количество повторений'), { target: { value } })
+      fireEvent.click(screen.getByRole('button', { name: 'Сохранить повторения' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('целое положительное')
+    }
+    expect(repository.updateExerciseReps).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText('Количество повторений'), { target: { value: '10' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить повторения' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось сохранить повторения')
+    expect(screen.getByLabelText('Количество повторений')).toHaveValue('10')
+    expect(screen.getByText('Не указаны')).toBeInTheDocument()
   })
 })

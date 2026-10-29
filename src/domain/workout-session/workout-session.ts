@@ -80,6 +80,7 @@ const activateStep = (
       templateSnapshot: session.templateSnapshot,
       currentStepIndex,
       startedAt: session.startedAt ?? now,
+      restStartedAt: now,
       restEndsAt: now + step.restPreset.durationSeconds * 1_000,
     }
   }
@@ -184,6 +185,7 @@ export function extendCurrentRest(
 
   return success({
     ...session,
+    restStartedAt: getRestStartedAt(session),
     restEndsAt: session.restEndsAt + durationSeconds * 1_000,
   })
 }
@@ -263,4 +265,53 @@ export function setSessionExerciseWeight(
       ),
     },
   }
+}
+
+export function setSessionExerciseReps(
+  session: ActiveWorkoutSession,
+  exerciseId: string,
+  reps: number | null,
+): ActiveWorkoutSession {
+  if (reps !== null && (!Number.isSafeInteger(reps) || reps <= 0))
+    throw new Error('Invalid repetitions')
+  return {
+    ...session,
+    templateSnapshot: {
+      ...session.templateSnapshot,
+      steps: session.templateSnapshot.steps.map((step) =>
+        step.type === 'exercise' && step.exercise.id === exerciseId
+          ? { ...step, exercise: { ...step.exercise, lastReps: reps } }
+          : step,
+      ),
+    },
+  }
+}
+
+/** Every resolved exercise step is one working set, including unequal supersets. */
+export function getWorkingSetProgress(session: ActiveWorkoutSession) {
+  const steps = session.templateSnapshot.steps
+  const total = steps.filter((step) => step.type === 'exercise').length
+  const completed = steps
+    .slice(0, session.currentStepIndex)
+    .filter((step) => step.type === 'exercise').length
+  const current =
+    completed + (getCurrentStep(session)?.type === 'exercise' ? 1 : 0)
+  return { total, completed, current }
+}
+
+function getRestStartedAt(session: RestWorkoutSession): number {
+  const step = session.templateSnapshot.steps[session.currentStepIndex]
+  const duration = step?.type === 'rest' ? step.restPreset.durationSeconds : 0
+  return session.restStartedAt ?? session.restEndsAt - duration * 1_000
+}
+
+/** Remaining fraction of the same absolute deadline used by the countdown. */
+export function getRestRemainingFraction(
+  session: RestWorkoutSession,
+  now: number,
+): number {
+  const duration = session.restEndsAt - getRestStartedAt(session)
+  return duration > 0
+    ? Math.max(0, Math.min(1, (session.restEndsAt - now) / duration))
+    : 0
 }

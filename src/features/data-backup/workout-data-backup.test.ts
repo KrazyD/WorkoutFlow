@@ -123,3 +123,14 @@ it.each([-1, NaN, Infinity, '59,1'])('rejects an invalid exported weight %s', (l
   const backup = validBackup()
   expect(validateWorkoutFlowImport({ ...backup, data: { ...backup.data, exercises: [{ id: 'exercise-1', name: 'Тест', lastWeightKg }] } }).success).toBe(false)
 })
+
+it.each([undefined, null, 10])('round trips optional repetitions in v2: %s', (lastReps) => {
+  const backup = validBackup()
+  const exported = { ...backup, data: { ...backup.data, exercises: [{ id: 'exercise-1', name: 'Жим', ...(lastReps !== undefined ? { lastReps } : {}) }] } }
+  const result = validateWorkoutFlowImport(JSON.parse(serializeWorkoutFlowExport(exported)))
+  expect(result).toEqual({ success: true, data: exported })
+})
+it.each([0, -1, 1.5, '10', Infinity, Number.MAX_SAFE_INTEGER + 1])('rejects invalid repetitions in backups: %s', (lastReps) => {
+  const backup = validBackup()
+  expect(validateWorkoutFlowImport({ ...backup, data: { ...backup.data, exercises: [{ id: 'exercise-1', name: 'Жим', lastReps }] } }).success).toBe(false)
+})

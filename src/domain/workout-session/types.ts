@@ -3,6 +3,7 @@ export interface Exercise {
   readonly name: string
   readonly description?: string
   readonly lastWeightKg?: number | null
+  readonly lastReps?: number | null
 }
 
 export interface RestPreset {
@@ -55,6 +56,8 @@ export interface ExerciseWorkoutSession extends SessionBase {
 export interface RestWorkoutSession extends SessionBase {
   readonly status: 'rest'
   readonly startedAt: number
+  /** Optional for snapshots saved before the circular timer. */
+  readonly restStartedAt?: number
   readonly restEndsAt: number
 }
 

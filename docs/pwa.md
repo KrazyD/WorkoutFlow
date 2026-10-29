@@ -62,8 +62,9 @@ update in another tab while training. The existing IndexedDB session recovery
 remains the recovery mechanism; PWA support does not alter it.
 
 Cache Storage contains build assets; IndexedDB contains user records. Workbox
-cleanup only manages its caches. No Dexie version, repository, domain model,
-identifier or JSON backup format changes. Feedback preferences still use the
+cleanup only manages its caches. PWA lifecycle code does not migrate or reset user data. The Dark Glass update
+adds optional exercise repetitions and a rest origin to existing records, with
+no tables/indexes or backup-version changes. Feedback preferences still use the
 same localStorage key. No PWA lifecycle callback clears either user store.
 
 ## iPhone installation and timers
@@ -179,3 +180,72 @@ test dependency or test runner was added to the project):
   completed session survived.
 
 These checks cover Chromium. Real iPhone and Safari acceptance remains manual.
+
+
+## Dark Glass acceptance additions
+
+At 375, 390 and 430 CSS px, check the three-item dock, expanded active label,
+stationary header, content-only scrolling, and full access to the last card
+above the plus button. Check both catalog segments and long workout editors.
+With the iOS keyboard open, floating controls should disappear and all form
+fields and save/cancel actions should remain reachable. After closing the
+keyboard or leaving the field, navigation returns.
+
+Repeat in installed standalone mode with safe areas, landscape, large text,
+reduced motion, and unsupported backdrop filtering. Verify weight/repetitions
+editing and reload, unequal supersets, rest extension and lock/unlock recovery.
+The ring is presentation only; use the original deadline for elapsed rest.
+Repeat the existing offline-launch and two-version worker-update checks above.
+Chromium emulation cannot establish real iOS keyboard, installation, background
+suspension, or worker update behavior on an iPhone.
+
+### Dark Glass local verification performed
+
+A disposable bundled Chromium profile exercised the production build at 375,
+390 and 430 CSS px. Checks passed for active-only dock labels, accessible
+navigation, no horizontal overflow, stationary header, content scrolling and
+last-card clearance above the plus. Focused text fields hide floating controls;
+settings checkboxes keep navigation available. A 15-block editor saved through
+the reduced-motion scroll-to-save action at a 375×440 keyboard-sized viewport.
+
+A superset session retained edited repetitions after reload, and the rest ring
+survived extension/reload/skip with correct working-set progress. A real worker
+installed and served direct routes offline; the restored session and JSON v2
+export (including repetitions) worked offline. A locally changed worker waited
+without offering activation during a session, then activated after explicit
+exit and confirmation; the catalog remained available. The generated worker
+was restored after the test. No server deployment or real browser data changes
+were performed. Physical iPhone acceptance above remains manual.
+
+### Dark Glass polish
+
+The viewport now opts into `viewport-fit=cover`, allowing WebKit to expose the
+safe-area insets already consumed by the layout. Catalog headers add 8 px of top
+clearance. Inspection found no text shadow, filter, mask, overlay, or backdrop
+filter on the brand/header; the physical-iPhone report cannot be reproduced or
+attributed conclusively in the desktop browser. Brand typography and color are
+unchanged, and the header is outside the content animation and scrolling region.
+
+The dock uses `rgba(20, 32, 53, 0.64)`, 18 px backdrop blur and 130% saturation,
+including the WebKit prefix. Unsupported browsers keep the opaque `#142035`
+background, border and shadow. Navigation SVGs share a 24 px view box and 1.8 px
+stroke; the settings contour has six identical radial teeth. The plus uses a
+centered 24 px SVG inside the existing 56 px grid button.
+
+View Transitions were considered but not introduced: the current declarative
+`BrowserRouter` needs no new router integration or snapshot lifecycle for this
+small change. CSS animates only incoming catalog content for 200 ms, from 0.55
+opacity and `translateY(6px)` to its resting state. The dock remains mounted;
+there are no artificial delays, animation callbacks, or animation-specific
+component keys. Route/state/session lifecycle semantics remain unchanged.
+`prefers-reduced-motion: reduce` disables both entrance and dock animations.
+
+Local browser checks covered 375, 390 and 430 CSS px, both Builder segments,
+active/inactive settings SVG, exact plus centers, no horizontal overflow,
+keyboard-sized 375 x 440 viewport, draft cancellation, and browser history.
+Unit regressions check actual dock/link identity across rapid route changes,
+a single interactive main region, same-route draft preservation and no session
+dock. The available browser cannot emulate reduced motion or remove backdrop
+support; those fallbacks were inspected in CSS. Real iPhone safe areas, DPR,
+keyboard, standalone installation, and animation frame pacing remain manual
+acceptance checks; desktop screenshots do not establish those results.

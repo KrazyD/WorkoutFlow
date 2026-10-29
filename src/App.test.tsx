@@ -6,12 +6,7 @@ import {
   within,
 } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  MemoryRouter,
-  useLocation,
-  useNavigate,
-} from 'react-router-dom'
-import { useEffect } from 'react'
+import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 
 import { App } from './App'
 import type { Exercise } from './domain/workout-session'
@@ -91,9 +86,7 @@ class EmptyWorkoutTemplateRepository implements WorkoutTemplateRepository {
   }
 }
 
-class EmptyActiveWorkoutSessionRepository
-  implements ActiveWorkoutSessionRepository
-{
+class EmptyActiveWorkoutSessionRepository implements ActiveWorkoutSessionRepository {
   async get() {
     return undefined
   }
@@ -102,6 +95,7 @@ class EmptyActiveWorkoutSessionRepository
   async update() {}
   async complete() {}
   async updateExerciseWeight() {}
+  async updateExerciseReps() {}
   async clear() {}
 }
 
@@ -363,7 +357,7 @@ describe('catalog navigation', () => {
     )
 
     expect(
-      await screen.findByRole('heading', { name: 'Отдых', level: 1 }),
+      await screen.findByRole('heading', { name: 'Конструктор', level: 1 }),
     ).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Упражнения' })).toHaveAttribute(
       'href',
@@ -373,7 +367,7 @@ describe('catalog navigation', () => {
 
   it('navigates between all catalog sections and marks the active link', async () => {
     renderNavigationApp()
-    await screen.findByRole('heading', { name: 'Упражнения', level: 1 })
+    await screen.findByRole('heading', { name: 'Конструктор', level: 1 })
 
     expect(screen.getByRole('link', { name: 'Упражнения' })).toHaveAttribute(
       'aria-current',
@@ -382,7 +376,7 @@ describe('catalog navigation', () => {
 
     fireEvent.click(screen.getByRole('link', { name: 'Отдых' }))
     expect(
-      await screen.findByRole('heading', { name: 'Отдых', level: 1 }),
+      await screen.findByRole('heading', { name: 'Конструктор', level: 1 }),
     ).toBeInTheDocument()
     expect(screen.getByLabelText('Текущий URL')).toHaveTextContent(
       '/rest-presets',
@@ -398,20 +392,20 @@ describe('catalog navigation', () => {
     ).toBeInTheDocument()
     expect(screen.getByLabelText('Текущий URL')).toHaveTextContent('/workouts')
 
-    fireEvent.click(screen.getByRole('link', { name: 'Упражнения' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Конструктор' }))
     expect(
-      await screen.findByRole('heading', { name: 'Упражнения', level: 1 }),
+      await screen.findByRole('heading', { name: 'Конструктор', level: 1 }),
     ).toBeInTheDocument()
     expect(screen.getByLabelText('Текущий URL')).toHaveTextContent('/exercises')
   })
 
-  it('redirects the root route to exercises without a document navigation', async () => {
+  it('redirects the root route to workouts without a document navigation', async () => {
     renderNavigationApp(['/'])
 
     expect(
-      await screen.findByRole('heading', { name: 'Упражнения', level: 1 }),
+      await screen.findByRole('heading', { name: 'Тренировки', level: 1 }),
     ).toBeInTheDocument()
-    expect(screen.getByLabelText('Текущий URL')).toHaveTextContent('/exercises')
+    expect(screen.getByLabelText('Текущий URL')).toHaveTextContent('/workouts')
   })
 
   it('shows a client-side not-found screen for an unknown route', () => {
@@ -426,36 +420,56 @@ describe('catalog navigation', () => {
     )
   })
 
-  it('keeps the application shell mounted while routes change', async () => {
-    const onMount = vi.fn()
-    const MountProbe = () => {
-      useEffect(() => {
-        onMount()
-      }, [])
-      return null
+  it('keeps the actual dock and its links mounted across rapid route changes', async () => {
+    renderNavigationApp(['/workouts'])
+    const dock = screen.getByRole('navigation', { name: 'Разделы' })
+    const settings = within(dock).getByRole('link', { name: 'Настройки' })
+    const builder = within(dock).getByRole('link', { name: 'Конструктор' })
+    const workouts = within(dock).getByRole('link', { name: 'Тренировки' })
+
+    for (const link of [builder, settings, workouts, builder]) {
+      fireEvent.click(link)
+      expect(screen.getByRole('navigation', { name: 'Разделы' })).toBe(dock)
+      expect(screen.getAllByRole('main')).toHaveLength(1)
     }
-
-    renderNavigationApp(['/exercises'], <MountProbe />)
-    await screen.findByRole('heading', { name: 'Упражнения', level: 1 })
     fireEvent.click(screen.getByRole('link', { name: 'Отдых' }))
-    await screen.findByRole('heading', { name: 'Отдых', level: 1 })
-    fireEvent.click(screen.getByRole('link', { name: 'Тренировки' }))
-    await screen.findByRole('heading', { name: 'Тренировки', level: 1 })
+    expect(screen.getByRole('navigation', { name: 'Разделы' })).toBe(dock)
+    expect(builder).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'Отдых' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    )
+    expect(screen.getByLabelText('Текущий URL')).toHaveTextContent(
+      '/rest-presets',
+    )
+    await screen.findByRole('heading', { name: 'Вариантов отдыха пока нет' })
+  })
 
-    expect(onMount).toHaveBeenCalledOnce()
+  it('keeps an open editor and its draft on same-route navigation', async () => {
+    renderNavigationApp()
+    await waitForLoadedScreen()
+    openCreateForm()
+    const name = screen.getByLabelText('Название')
+    fireEvent.change(name, { target: { value: 'Черновик' } })
+    fireEvent.click(screen.getByRole('link', { name: 'Конструктор' }))
+    expect(screen.getByLabelText('Название')).toBe(name)
+    expect(name).toHaveValue('Черновик')
+    expect(
+      screen.getByRole('heading', { name: 'Новое упражнение' }),
+    ).toBeInTheDocument()
   })
 
   it('supports backward and forward navigation through router history', async () => {
     renderNavigationApp(['/exercises'], <HistoryControls />)
-    await screen.findByRole('heading', { name: 'Упражнения', level: 1 })
+    await screen.findByRole('heading', { name: 'Конструктор', level: 1 })
     fireEvent.click(screen.getByRole('link', { name: 'Отдых' }))
-    await screen.findByRole('heading', { name: 'Отдых', level: 1 })
+    await screen.findByRole('heading', { name: 'Конструктор', level: 1 })
     fireEvent.click(screen.getByRole('link', { name: 'Тренировки' }))
     await screen.findByRole('heading', { name: 'Тренировки', level: 1 })
 
     fireEvent.click(screen.getByRole('button', { name: 'Назад в тесте' }))
     expect(
-      await screen.findByRole('heading', { name: 'Отдых', level: 1 }),
+      await screen.findByRole('heading', { name: 'Конструктор', level: 1 }),
     ).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Вперёд в тесте' }))
@@ -466,6 +480,9 @@ describe('catalog navigation', () => {
 
   it('returns from an empty workout session through client navigation', async () => {
     renderNavigationApp(['/workout-session'])
+    expect(
+      screen.queryByRole('navigation', { name: 'Разделы' }),
+    ).not.toBeInTheDocument()
     const returnButton = await screen.findByRole('button', {
       name: 'Вернуться к тренировкам',
     })
@@ -477,4 +494,63 @@ describe('catalog navigation', () => {
     ).toBeInTheDocument()
     expect(screen.getByLabelText('Текущий URL')).toHaveTextContent('/workouts')
   })
+})
+
+it('offers three bottom destinations, contextual creation and settings feedback', async () => {
+  renderNavigationApp(['/workouts'])
+  const menu = screen.getByRole('navigation', { name: 'Разделы' })
+  expect(within(menu).getAllByRole('link')).toHaveLength(3)
+  for (const label of ['Тренировки', 'Конструктор', 'Настройки']) {
+    const link = within(menu).getByRole('link', { name: label })
+    expect(link.querySelector('svg')).toHaveAttribute('aria-hidden', 'true')
+  }
+  expect(within(menu).getByRole('link', { name: 'Тренировки' })).toHaveClass(
+    'is-active',
+  )
+  expect(
+    screen.getByRole('button', { name: 'Создать тренировку' }),
+  ).toHaveClass('add-button')
+  expect(
+    screen
+      .getByRole('button', { name: 'Создать тренировку' })
+      .querySelector('svg'),
+  ).toHaveAttribute('aria-hidden', 'true')
+  expect(
+    screen.queryByRole('heading', { name: 'Оповещения' }),
+  ).not.toBeInTheDocument()
+  fireEvent.click(within(menu).getByRole('link', { name: 'Конструктор' }))
+  expect(
+    screen.getByRole('button', { name: 'Добавить упражнение' }),
+  ).toHaveClass('add-button')
+  fireEvent.click(screen.getByRole('link', { name: 'Отдых' }))
+  expect(
+    screen.getByRole('button', { name: 'Добавить вариант отдыха' }),
+  ).toHaveClass('add-button')
+  expect(screen.getByRole('link', { name: 'Конструктор' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  )
+  fireEvent.click(screen.getByRole('link', { name: 'Настройки' }))
+  expect(
+    await screen.findByRole('heading', { name: 'Оповещения' }),
+  ).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Настройки' })).toHaveClass(
+    'is-active',
+  )
+  expect(document.querySelector('.add-button')).toBeNull()
+})
+
+it('hides only the edited exercise and restores it on cancel without a false empty state', async () => {
+  renderApp(new InMemoryExerciseRepository([storedExercise]))
+  await screen.findByRole('heading', { name: storedExercise.name })
+  fireEvent.click(screen.getByRole('button', { name: 'Изменить' }))
+  const list = screen.getByRole('region', { name: 'Список упражнений' })
+  expect(
+    within(list).queryByRole('heading', { name: storedExercise.name }),
+  ).not.toBeInTheDocument()
+  expect(screen.queryByText('Упражнений пока нет')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Отмена' }))
+  expect(
+    within(list).getByRole('heading', { name: storedExercise.name }),
+  ).toBeInTheDocument()
 })

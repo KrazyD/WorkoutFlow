@@ -57,6 +57,7 @@ const exerciseSchema = z
   .object({
     id: idSchema,
     name: trimmedNonEmpty(EXERCISE_NAME_MAX_LENGTH),
+    lastReps: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable().optional(),
     lastWeightKg: z.number().finite().nonnegative().nullable().optional(),
     description: z
       .string()

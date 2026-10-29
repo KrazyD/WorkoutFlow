@@ -1,3 +1,5 @@
+import { CatalogNavigationHost } from './shared/catalog-ui'
+import { useVisibleViewport } from './shared/use-visible-viewport'
 import { Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import {
   activeWorkoutSessionRepository as defaultActiveWorkoutSessionRepository,
@@ -32,46 +34,54 @@ export function App({
   activeWorkoutSessionRepository = defaultActiveWorkoutSessionRepository,
   workoutDataBackupService = defaultWorkoutDataBackupService,
 }: AppProps) {
+  useVisibleViewport()
   const navigate = useNavigate()
 
   return (
-    <Routes>
-      <Route path="/" element={<Navigate to="/exercises" replace />} />
-      <Route
-        path="/exercises"
-        element={<ExercisesScreen repository={exerciseRepository} />}
-      />
-      <Route
-        path="/rest-presets"
-        element={<RestPresetsScreen repository={restPresetRepository} />}
-      />
-      <Route
-        path="/workouts"
-        element={
-          <WorkoutTemplatesScreen
-            repository={workoutTemplateRepository}
-            exerciseRepository={exerciseRepository}
-            restPresetRepository={restPresetRepository}
-            activeWorkoutSessionRepository={activeWorkoutSessionRepository}
-            navigate={navigate}
-          />
-        }
-      />
-      <Route
-        path="/settings/data"
-        element={<DataBackupScreen service={workoutDataBackupService} />}
-      />
-      <Route
-        path="/workout-session"
-        element={
-          <WorkoutSessionScreen
-            repository={activeWorkoutSessionRepository}
-            navigate={navigate}
-          />
-        }
-      />
-      <Route path="*" element={<NotFoundScreen />} />
-    </Routes>
+    <CatalogNavigationHost>
+      <Routes>
+        <Route path="/" element={<Navigate to="/workouts" replace />} />
+        <Route
+          path="/exercises"
+          element={<ExercisesScreen repository={exerciseRepository} />}
+        />
+        <Route
+          path="/rest-presets"
+          element={<RestPresetsScreen repository={restPresetRepository} />}
+        />
+        <Route
+          path="/workouts"
+          element={
+            <WorkoutTemplatesScreen
+              repository={workoutTemplateRepository}
+              exerciseRepository={exerciseRepository}
+              restPresetRepository={restPresetRepository}
+              activeWorkoutSessionRepository={activeWorkoutSessionRepository}
+              navigate={navigate}
+            />
+          }
+        />
+        <Route
+          path="/settings/data"
+          element={<DataBackupScreen service={workoutDataBackupService} />}
+        />
+        <Route
+          path="/workout-session"
+          element={
+            <WorkoutSessionScreen
+              repository={activeWorkoutSessionRepository}
+              navigate={navigate}
+            />
+          }
+        />
+        <Route
+          path="/settings"
+          element={<Navigate to="/settings/data" replace />}
+        />
+        <Route path="/builder" element={<Navigate to="/exercises" replace />} />
+        <Route path="*" element={<NotFoundScreen />} />
+      </Routes>
+    </CatalogNavigationHost>
   )
 }
 

@@ -1,3 +1,7 @@
+import { workoutAudioService } from '../../shared/audio/workout-audio-service'
+import { workoutVibrationService } from '../../shared/vibration/workout-vibration-service'
+import { WorkoutFeedbackSettingsPanel } from '../workout-feedback/WorkoutFeedbackSettingsPanel'
+import { workoutFeedbackSettingsStore } from '../workout-feedback/workout-feedback-settings'
 import { useRef, useState, type ChangeEvent } from 'react'
 
 import { CatalogPageLayout, RepositoryErrorAlert } from '../../shared/catalog-ui'
@@ -109,7 +113,8 @@ export function DataBackupScreen({
   }
 
   return (
-    <CatalogPageLayout title="Резервная копия" actionLabel="Экспортировать" onAction={() => void exportData()}>
+    <CatalogPageLayout title="Настройки">
+      <FeedbackSettings key={success ?? 'settings'} />
       {error ? <RepositoryErrorAlert message={error} /> : null}
       {success ? <p role="status" className="mt-5 rounded-xl border border-lime-800 bg-lime-950/50 px-4 py-3 text-sm text-lime-200">{success}</p> : null}
 
@@ -143,4 +148,10 @@ export function DataBackupScreen({
       ) : null}
     </CatalogPageLayout>
   )
+}
+
+
+function FeedbackSettings() {
+  const [settings, setSettings] = useState(() => workoutFeedbackSettingsStore.load())
+  return <WorkoutFeedbackSettingsPanel settings={settings} onChange={setSettings} store={workoutFeedbackSettingsStore} audioService={workoutAudioService} vibrationService={workoutVibrationService} />
 }

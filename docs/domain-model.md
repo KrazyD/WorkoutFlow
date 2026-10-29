@@ -2,7 +2,7 @@
 
 ## Catalogs
 
-`Exercise` has an ID, name, optional description and optional `lastWeightKg`.
+`Exercise` has an ID, name, optional description, optional `lastWeightKg` and optional `lastReps`.
 Missing or null weight means unspecified. Weight is a finite, nonnegative
 number of kilograms. It is the latest value, not a per-set result or history.
 `RestPreset` has an ID, name and integer `durationSeconds` (5–3,600).
@@ -53,6 +53,28 @@ weight stores null. Editing exercise name/description preserves its weight.
 If an exercise was deleted during a session, its snapshot remains editable
 but there is no longer a catalog record to update for future workouts.
 
+`lastReps` is a positive safe integer or null/omitted (unspecified). It is not
+extracted from descriptions. `setSessionExerciseReps` updates all occurrences
+of the exercise, just like weight; its repository method commits snapshot and
+catalog in one transaction. Clearing stores null. Catalog name/description
+edits preserve both values, and newly resolved workouts read the latest values.
+Old v2 JSON backups without `lastReps` remain valid; export includes it when
+present and import rejects fractional, zero, negative or unsafe integers.
+
+`getWorkingSetProgress` counts only exercise steps in the resolved snapshot.
+`completed` counts exercise steps before the saved current index; `current`
+adds one only during exercise. `total` counts every exercise step. This supports
+unequal superset series and restored legacy snapshots without guessing groups.
+`countTemplateWorkingSets` sums series counts (default 1), including all nested
+superset series, and ignores explicit rest blocks for catalog cards.
+
+Rest snapshots additionally store optional `restStartedAt` for the visual ring.
+Its remaining fraction is `(restEndsAt - now) / (restEndsAt - restStartedAt)`,
+clamped to 0–1. Extensions keep the origin and move only the deadline. Old
+snapshots infer the origin from their deadline and configured duration; the
+first extension persists that inferred origin. This cannot reconstruct earlier
+extensions in snapshots written before the field existed.
+
 No completed-set results, workout statistics or progression history are kept.
 
 ## Storage compatibility
@@ -64,7 +86,7 @@ without set metadata show 1 of 1. The same execution engine handles them.
 Old manually repeated steps are never guessed to be one series; edit them into
 an explicit series or superset to obtain a multi-set counter.
 
-JSON backup uses `workout-flow-export` version 2 and includes catalogs, weights,
+JSON backup uses `workout-flow-export` version 2 and includes catalogs, weights, repetitions,
 all series/group IDs, set counts, rest references, template order and feedback
 settings. It excludes active sessions. JSON v1 is rejected with a clear message.
 

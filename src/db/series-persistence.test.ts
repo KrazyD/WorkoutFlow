@@ -114,3 +114,33 @@ describe('series persistence', () => {
     expect(await sessions.get()).toEqual(session)
   })
 })
+
+it('saves repetitions across sets, database reopen and a new workout; preserves them on catalog edits', async () => {
+  const { db, sessions, session, exercises, template, a } = await setup()
+  for (const reps of [10, 12, null, 8]) {
+    await sessions.updateExerciseReps((await sessions.get())!, a.id, reps)
+    expect((await db.exercises.get(a.id))?.lastReps).toBe(reps)
+  }
+  db.close()
+  await db.open()
+  const restored = (await new DexieActiveWorkoutSessionRepository(db).get())!
+  for (const step of restored.templateSnapshot.steps) {
+    if (step.type === 'exercise' && step.exercise.id === a.id) expect(step.exercise.lastReps).toBe(8)
+  }
+  expect(session.templateSnapshot.steps[0]).not.toHaveProperty('exercise.lastReps')
+  await exercises.update(a.id, { name: 'Жим' })
+  const newWorkout = resolveWorkoutTemplate(template, await exercises.getAll(), await db.restPresets.toArray())!
+  expect(newWorkout.steps[0]).toHaveProperty('exercise.lastReps', 8)
+})
+
+it('rolls back repetitions on session write failure and can edit a deleted exercise snapshot', async () => {
+  const { db, sessions, session, a } = await setup()
+  vi.spyOn(db.activeWorkoutSessions, 'put').mockRejectedValueOnce(new Error('disk full'))
+  await expect(sessions.updateExerciseReps(session, a.id, 10)).rejects.toThrow('disk full')
+  expect((await db.exercises.get(a.id))?.lastReps).toBeUndefined()
+  expect(await sessions.get()).toEqual(session)
+  await db.exercises.delete(a.id)
+  await sessions.updateExerciseReps(session, a.id, 12)
+  expect((await sessions.get())?.templateSnapshot.steps[0]).toHaveProperty('exercise.lastReps', 12)
+  expect(await db.exercises.get(a.id)).toBeUndefined()
+})

@@ -96,3 +96,41 @@ input clears the value; invalid and negative input is rejected. Save commits
 both catalog and snapshot changes atomically before updating the display.
 Exercise completion is disabled while weight editing is open, preventing a
 step change from discarding unsaved input. Errors keep the form open to retry.
+
+
+## Dark Glass navigation and workout UI
+
+The default route opens Workouts (`/workouts`). Three bottom destinations expose
+Workouts, Builder and Settings. Builder keeps `/exercises` and `/rest-presets`
+as its segmented catalog routes; Settings (`/settings/data`, also reachable from
+`/settings`) contains the existing feedback preferences and JSON backup UI.
+`/builder` redirects to exercises. Existing direct links continue working.
+
+`CatalogPageLayout` owns a fixed-height `100dvh` shell with a stationary header,
+one scrolling content region and a bottom glass dock. Only the selected dock
+item expands its icon label, using short CSS transitions; all links have
+accessible names and `aria-current`. Reduced motion disables transitions.
+`useVisibleViewport` adjusts the root to keyboard-induced Visual Viewport
+height changes when available. Opaque panel styling is the fallback without backdrop filtering. Safe-area
+padding protects the header, dock and floating controls.
+
+The contextual plus creates a workout, exercise or rest preset. It is absent in
+Settings, active sessions and while an editor is open. Bottom content padding
+lets the last item scroll above both floating controls. Focused keyboard inputs hide
+the dock and floating controls to avoid obscuring keyboard input. Opening an
+editor scrolls its content to the top. Edited catalog cards are temporarily
+filtered out without changing stored records or showing a false empty state.
+
+Session progress displays working sets instead of engine steps, using the
+snapshot calculation described in the domain model. A lime badge emphasizes
+the existing last-set condition. The next exercise preview still skips rest.
+`NumericValueCard` shares weight and repetitions editing, validation messages,
+clear/cancel/save controls and persistence errors; completing the exercise is
+disabled while either editor is open. Weight uses decimal input and repetitions
+use numeric input, with empty input clearing the value.
+
+`RestTimer` draws an SVG ring around the existing text countdown. It reads the
+same current timestamp and deadline as the existing single refresh interval;
+there is no second clock or timer. Adding 30 seconds expands the denominator,
+and recovery calculates the actual remaining fraction. Automatic expiry,
+skipping, feedback deduplication and sound/vibration paths are unchanged.

@@ -1,3 +1,5 @@
+import { countTemplateWorkingSets } from '../../domain/workout-template'
+import { getWorkingSetProgress } from '../../domain/workout-session'
 import { resolveWorkoutTemplate } from '../../domain/resolve-workout-template'
 import { ScrollToSaveButton } from '../../shared/ScrollToSaveButton'
 import { BlockFields } from './SeriesFields'
@@ -44,7 +46,6 @@ import {
   removeStep,
 } from './workout-step-list'
 import type { ActiveWorkoutSessionRepository } from '../workout-session/active-workout-session-repository'
-import { WorkoutFeedbackSettingsPanel } from '../workout-feedback/WorkoutFeedbackSettingsPanel'
 import {
   workoutFeedbackSettingsStore,
   type WorkoutFeedbackSettingsStore,
@@ -53,10 +54,6 @@ import {
   workoutAudioService,
   type WorkoutAudioService,
 } from '../../shared/audio/workout-audio-service'
-import {
-  workoutVibrationService,
-  type WorkoutVibrationService,
-} from '../../shared/vibration/workout-vibration-service'
 import { createId } from '../../shared/id/createId'
 
 interface WorkoutTemplatesScreenProps {
@@ -68,7 +65,6 @@ interface WorkoutTemplatesScreenProps {
   readonly now?: () => number
   readonly feedbackSettingsStore?: WorkoutFeedbackSettingsStore
   readonly audioService?: WorkoutAudioService
-  readonly vibrationService?: WorkoutVibrationService
 }
 
 const emptyActiveSessionRepository: ActiveWorkoutSessionRepository = {
@@ -77,6 +73,7 @@ const emptyActiveSessionRepository: ActiveWorkoutSessionRepository = {
   update: async () => undefined,
   complete: async () => undefined,
   updateExerciseWeight: async () => undefined,
+  updateExerciseReps: async () => undefined,
   clear: async () => undefined,
 }
 
@@ -88,14 +85,14 @@ type Picker = 'exercise' | 'rest' | null
 
 const emptyForm: WorkoutTemplateFormValues = { name: '', steps: [] }
 
-const stepCountLabel = (count: number): string => {
+const workingSetCountLabel = (count: number): string => {
   const lastTwoDigits = count % 100
   const lastDigit = count % 10
 
-  if (lastTwoDigits >= 11 && lastTwoDigits <= 14) return `${count} шагов`
-  if (lastDigit === 1) return `${count} шаг`
-  if (lastDigit >= 2 && lastDigit <= 4) return `${count} шага`
-  return `${count} шагов`
+  if (lastTwoDigits >= 11 && lastTwoDigits <= 14) return `${count} подходов`
+  if (lastDigit === 1) return `${count} подход`
+  if (lastDigit >= 2 && lastDigit <= 4) return `${count} подхода`
+  return `${count} подходов`
 }
 
 export function WorkoutTemplatesScreen({
@@ -107,7 +104,6 @@ export function WorkoutTemplatesScreen({
   now = Date.now,
   feedbackSettingsStore = workoutFeedbackSettingsStore,
   audioService = workoutAudioService,
-  vibrationService = workoutVibrationService,
 }: WorkoutTemplatesScreenProps) {
   const [templates, setTemplates] = useState<WorkoutTemplateRecord[]>([])
   const [exercises, setExercises] = useState<Exercise[]>([])
@@ -127,9 +123,6 @@ export function WorkoutTemplatesScreen({
   const [activeSession, setActiveSession] = useState<ActiveWorkoutSession>()
   const [templateToStart, setTemplateToStart] =
     useState<WorkoutTemplateRecord | null>(null)
-  const [feedbackSettings, setFeedbackSettings] = useState(() =>
-    feedbackSettingsStore.load(),
-  )
   const [audioWarning, setAudioWarning] = useState(false)
 
   const exerciseById = useMemo(
@@ -363,7 +356,7 @@ export function WorkoutTemplatesScreen({
     setIsSaving(true)
     setRepositoryError(null)
     try {
-      if (feedbackSettings.soundEnabled) {
+      if (feedbackSettingsStore.load().soundEnabled) {
         const audioPrepared = await audioService.prepare()
         setAudioWarning(!audioPrepared.success)
       }
@@ -425,6 +418,7 @@ export function WorkoutTemplatesScreen({
       title="Тренировки"
       actionLabel="Создать тренировку"
       onAction={openCreateForm}
+      isEditing={formMode !== null}
     >
       {repositoryError ? (
         <RepositoryErrorAlert message={repositoryError} />
@@ -436,14 +430,6 @@ export function WorkoutTemplatesScreen({
         </p>
       ) : null}
 
-      <WorkoutFeedbackSettingsPanel
-        settings={feedbackSettings}
-        onChange={setFeedbackSettings}
-        store={feedbackSettingsStore}
-        audioService={audioService}
-        vibrationService={vibrationService}
-      />
-
       {activeSession && activeSession.status !== 'completed' ? (
         <section
           className="mt-6 rounded-2xl border border-lime-900 bg-lime-950/30 p-5"
@@ -454,8 +440,8 @@ export function WorkoutTemplatesScreen({
             {activeSession.templateSnapshot.name}
           </h2>
           <p className="mt-1 text-sm text-slate-400">
-            Шаг {activeSession.currentStepIndex + 1} из{' '}
-            {activeSession.templateSnapshot.steps.length}
+            Выполнено {getWorkingSetProgress(activeSession).completed} из{' '}
+            {getWorkingSetProgress(activeSession).total} подходов
           </p>
           <button
             type="button"
@@ -562,7 +548,7 @@ export function WorkoutTemplatesScreen({
                   {formValues.steps.map((step, index) => (
                     <li
                       key={step.id}
-                      className="rounded-xl border border-slate-700 bg-slate-950 p-4"
+                      className={`editor-block rounded-2xl border border-slate-700 bg-slate-950 p-4 ${step.type === 'superset' ? 'superset-block' : step.type === 'rest' ? 'rest-block' : ''}`}
                     >
                       <p className="text-xs font-semibold tracking-wide text-slate-400 uppercase">
                         {step.type === 'exercise'
@@ -599,7 +585,7 @@ export function WorkoutTemplatesScreen({
                               steps: moveStepUp(current.steps, step.id),
                             }))
                           }
-                          className="min-h-11 text-sm font-semibold text-lime-300 disabled:text-slate-600"
+                          className="min-h-11 rounded-full border border-slate-700 px-4 text-sm font-semibold text-slate-200 disabled:opacity-50"
                         >
                           Выше
                         </button>
@@ -612,7 +598,7 @@ export function WorkoutTemplatesScreen({
                               steps: moveStepDown(current.steps, step.id),
                             }))
                           }
-                          className="min-h-11 text-sm font-semibold text-lime-300 disabled:text-slate-600"
+                          className="min-h-11 rounded-full border border-slate-700 px-4 text-sm font-semibold text-slate-200 disabled:opacity-50"
                         >
                           Ниже
                         </button>
@@ -797,7 +783,7 @@ export function WorkoutTemplatesScreen({
                 >
                   <h2 className="text-lg font-semibold">{template.name}</h2>
                   <p className="mt-1 text-sm text-slate-400">
-                    {stepCountLabel(template.steps.length)}
+                    {workingSetCountLabel(countTemplateWorkingSets(template))} · Блоков: {template.steps.length}
                   </p>
                   <p className="mt-2 truncate text-sm text-slate-400">
                     {template.steps.length === 0
@@ -822,7 +808,7 @@ export function WorkoutTemplatesScreen({
                         type="button"
                         disabled={template.steps.length === 0 || isSaving}
                         onClick={() => requestStart(template)}
-                        className="min-h-11 text-sm font-semibold text-lime-300 disabled:text-slate-600"
+                        className="min-h-11 rounded-full bg-lime-300 px-4 text-sm font-semibold text-slate-950 disabled:opacity-50"
                       >
                         Начать
                       </button>

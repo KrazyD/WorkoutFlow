@@ -65,7 +65,7 @@ const waitForEmptyState = async () => {
 }
 
 const openCreateForm = () => {
-  fireEvent.click(screen.getByRole('button', { name: 'Добавить вариант' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Добавить вариант отдыха' }))
 }
 
 const setDuration = (minutes: string, seconds: string) => {
@@ -296,4 +296,26 @@ describe('rest preset catalog', () => {
       screen.getByRole('heading', { name: 'Новый вариант отдыха' }),
     ).toBeInTheDocument()
   })
+})
+
+it('hides the edited rest preset, keeps other items and restores it on cancel and save', async () => {
+  renderScreen(new InMemoryRestPresetRepository([storedRestPreset, { id: 'other', name: 'Длинный', durationSeconds: 120 }]))
+  await screen.findByRole('heading', { name: 'Обычный' })
+  const list = screen.getByRole('region', { name: 'Список вариантов отдыха' })
+  const item = screen.getByRole('heading', { name: 'Обычный' }).closest('li')!
+  fireEvent.click(within(item).getByRole('button', { name: 'Изменить' }))
+  expect(within(list).queryByRole('heading', { name: 'Обычный' })).not.toBeInTheDocument()
+  expect(within(list).getByRole('heading', { name: 'Длинный' })).toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Отмена' }))
+  fireEvent.click(within(screen.getByRole('heading', { name: 'Обычный' }).closest('li')!).getByRole('button', { name: 'Изменить' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }))
+  expect(await within(list).findByRole('heading', { name: 'Обычный' })).toBeInTheDocument()
+})
+
+it('does not show an empty catalog while its only rest preset is being edited', async () => {
+  renderScreen(new InMemoryRestPresetRepository([storedRestPreset]))
+  await screen.findByRole('heading', { name: 'Обычный' })
+  fireEvent.click(screen.getByRole('button', { name: 'Изменить' }))
+  expect(screen.queryByRole('heading', { name: 'Обычный' })).not.toBeInTheDocument()
+  expect(screen.queryByText('Вариантов отдыха пока нет')).not.toBeInTheDocument()
 })

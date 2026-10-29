@@ -30,3 +30,19 @@ export interface WorkoutTemplateRecord {
   readonly name: string
   readonly steps: readonly WorkoutTemplateStep[]
 }
+
+/** Count working sets directly from catalog references without needing resolution. */
+export function countTemplateWorkingSets(
+  template: WorkoutTemplateRecord,
+): number {
+  return template.steps.reduce(
+    (total, step) =>
+      total +
+      (step.type === 'rest'
+        ? 0
+        : step.type === 'superset'
+          ? step.series.reduce((sum, series) => sum + (series.setCount ?? 1), 0)
+          : (step.setCount ?? 1)),
+    0,
+  )
+}

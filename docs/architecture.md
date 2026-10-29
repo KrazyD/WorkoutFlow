@@ -46,7 +46,7 @@ adapter. Schema version 1 introduced `exercises`; version 2 added
 tables and adds `activeWorkoutSessions`. The active-session repository uses the
 fixed `active` primary key, so at most one current session can exist. Workout
 template blocks and series store catalog identifiers rather than embedded catalog records.
-New series and weight properties require no new tables or indexes, so schema
+New series, weight, repetition and rest-origin properties require no new tables or indexes, so schema
 version 4 is retained and no existing records are deleted. The domain resolver
 expands explicit series/supersets into the existing session engine input.
 Later schema changes must use additional Dexie versions and explicit migrations
@@ -101,7 +101,7 @@ existing rest transition or its persistence.
 download behavior, and the data-screen workflow. `src/db` provides the Dexie
 implementation. Backup format v2 contains `format: 'workout-flow-export'`,
 `version: 2`, an ISO `exportedAt`, and `data` with `exercises`, `restPresets`,
-`workoutTemplates` and `feedbackSettings`. Exercises include latest weights;
+`workoutTemplates` and `feedbackSettings`. Exercises include latest weights and optional repetitions;
 templates include series counts, group structure, stable IDs and references.
 Active sessions are never exported or imported. Version 1 files are rejected.
 

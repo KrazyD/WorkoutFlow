@@ -170,6 +170,7 @@ export function ExercisesScreen({ repository }: ExercisesScreenProps) {
       title="Упражнения"
       actionLabel="Добавить упражнение"
       onAction={openCreateForm}
+      isEditing={formMode !== null}
     >
       {repositoryError ? (
         <RepositoryErrorAlert message={repositoryError} />
@@ -287,7 +288,7 @@ export function ExercisesScreen({ repository }: ExercisesScreenProps) {
           />
         ) : (
           <ul className="space-y-3">
-            {exercises.map((exercise) => (
+            {exercises.filter((exercise) => formMode?.type !== 'edit' || formMode.exercise.id !== exercise.id).map((exercise) => (
               <li
                 key={exercise.id}
                 className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5"

@@ -176,8 +176,9 @@ export function RestPresetsScreen({ repository }: RestPresetsScreenProps) {
   return (
     <CatalogPageLayout
       title="Отдых"
-      actionLabel="Добавить вариант"
+      actionLabel="Добавить вариант отдыха"
       onAction={openCreateForm}
+      isEditing={formMode !== null}
     >
       {repositoryError ? (
         <RepositoryErrorAlert message={repositoryError} />
@@ -348,7 +349,7 @@ export function RestPresetsScreen({ repository }: RestPresetsScreenProps) {
           />
         ) : (
           <ul className="space-y-3">
-            {restPresets.map((restPreset) => (
+            {restPresets.filter((restPreset) => formMode?.type !== 'edit' || formMode.restPreset.id !== restPreset.id).map((restPreset) => (
               <li
                 key={restPreset.id}
                 className="rounded-2xl border border-slate-800 bg-slate-900/80 p-5"

@@ -21,7 +21,13 @@ export function ScrollToSaveButton({
       aria-label="Прокрутить к сохранению"
       className="scroll-to-save rounded-full border border-lime-300 bg-slate-900 text-2xl text-lime-300 shadow-xl"
       onClick={() =>
-        target.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        target.current?.scrollIntoView({
+          behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)')
+            .matches
+            ? 'auto'
+            : 'smooth',
+          block: 'center',
+        })
       }
     >
       ↓

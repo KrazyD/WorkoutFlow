@@ -79,6 +79,7 @@ class InMemoryActiveSessionRepository implements ActiveWorkoutSessionRepository 
   async update(session: ActiveWorkoutSession) { this.session = session }
   async complete(session: ActiveWorkoutSession) { this.session = session }
   async updateExerciseWeight() {}
+  async updateExerciseReps() {}
   async clear() { this.session = undefined }
 }
 
@@ -157,7 +158,7 @@ describe('workout template list', () => {
     expect(
       await screen.findByRole('heading', { name: 'Тренировка ног' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('2 шага')).toBeInTheDocument()
+    expect(screen.getByText('1 подход · Блоков: 2')).toBeInTheDocument()
     expect(
       screen.getByText('Приседания → 1 минута 30 секунд'),
     ).toBeInTheDocument()
@@ -341,7 +342,7 @@ describe('workout template creation', () => {
     expect(
       await screen.findByRole('heading', { name: 'Круговая' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('2 шага')).toBeInTheDocument()
+    expect(screen.getByText('1 подход · Блоков: 2')).toBeInTheDocument()
     const steps = create.mock.calls[0]?.[0].steps ?? []
     expect(steps).toHaveLength(2)
     expect(steps[0]?.id).not.toBe('')
@@ -415,7 +416,7 @@ describe('workout template editing', () => {
     expect(
       await screen.findByRole('heading', { name: 'Ноги 2' }),
     ).toBeInTheDocument()
-    expect(screen.getByText('1 шаг')).toBeInTheDocument()
+    expect(screen.getByText('0 подходов · Блоков: 1')).toBeInTheDocument()
   })
 
   it('moves a step down immediately', async () => {
