@@ -27,7 +27,9 @@ export function NumericValueCard(props: NumericValueCardProps) {
       className={`value-card ${props.editing ? 'is-editing' : ''}`}
     >
       <h3 className="text-sm text-slate-400">{props.label}</h3>
-      <p className="value-number">{props.formattedValue}</p>
+      <p className={`value-number ${props.value == null ? 'is-empty' : ''}`}>
+        {props.formattedValue}
+      </p>
       {props.editing ? (
         <form
           className="mt-3 space-y-3"
@@ -100,7 +102,20 @@ export function NumericValueCard(props: NumericValueCardProps) {
             props.onEditingChange(true)
           }}
         >
-          <span aria-hidden="true">✎ </span>
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path d="m16 3 5 5-12 12-6 1 1-6L16 3ZM13 6l5 5" />
+          </svg>
           Изменить
         </button>
       )}
