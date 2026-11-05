@@ -45,6 +45,7 @@ export function resolveWorkoutTemplate(
       ? restById.get(block.restPresetId)
       : undefined
     if (block.restPresetId && !restPreset) return undefined
+    const executionBlock = { id: block.id, type: block.type }
     const sets: WorkoutStep[] = []
     const rounds = Math.max(...series.map((item) => item.setCount ?? 1))
     for (let round = 1; round <= rounds; round++) {
@@ -55,6 +56,7 @@ export function resolveWorkoutTemplate(
         if (round <= total)
           sets.push({
             type: 'exercise',
+            block: executionBlock,
             exercise,
             set: { seriesId: item.id, number: round, total },
           })
@@ -63,7 +65,7 @@ export function resolveWorkoutTemplate(
     sets.forEach((set, index) => {
       steps.push(set)
       if (restPreset && index < sets.length - 1)
-        steps.push({ type: 'rest', restPreset })
+        steps.push({ type: 'rest', block: executionBlock, restPreset })
     })
   }
   return { id: template.id, name: template.name, steps }

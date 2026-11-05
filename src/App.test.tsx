@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -9,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom'
 
 import { App } from './App'
-import type { Exercise } from './domain/workout-session'
+import type { ActiveWorkoutSession, Exercise } from './domain/workout-session'
 import type {
   CreateExerciseInput,
   ExerciseRepository,
@@ -87,7 +88,7 @@ class EmptyWorkoutTemplateRepository implements WorkoutTemplateRepository {
 }
 
 class EmptyActiveWorkoutSessionRepository implements ActiveWorkoutSessionRepository {
-  async get() {
+  async get(): Promise<ActiveWorkoutSession | undefined> {
     return undefined
   }
 
@@ -553,4 +554,44 @@ it('hides only the edited exercise and restores it on cancel without a false emp
   expect(
     within(list).getByRole('heading', { name: storedExercise.name }),
   ).toBeInTheDocument()
+})
+
+
+it('retains one viewport owner across keyboard dismissal, canceled numeric edits and route changes', async () => {
+  const viewport = Object.assign(new EventTarget(), { height: 812, offsetTop: 0, scale: 1 })
+  vi.stubGlobal('visualViewport', viewport)
+  const activeRepository = new EmptyActiveWorkoutSessionRepository()
+  const stored = { status: 'exercise' as const, currentStepIndex: 0, startedAt: 100,
+    templateSnapshot: { id:'t',name:'Очень длинное название тренировки для проверки доступного заголовка',steps:[{type:'exercise' as const,exercise:{id:'a',name:'Жим',lastWeightKg:15,lastReps:12}}] } }
+  vi.spyOn(activeRepository, 'get').mockResolvedValue(stored)
+  const weightWrite = vi.spyOn(activeRepository, 'updateExerciseWeight')
+  const repsWrite = vi.spyOn(activeRepository, 'updateExerciseReps')
+  render(<MemoryRouter initialEntries={['/workouts','/workout-session']}><App {...appRepositories} activeWorkoutSessionRepository={activeRepository} /><HistoryControls /></MemoryRouter>)
+  await screen.findByRole('heading', {name:stored.templateSnapshot.name})
+  expect(screen.getByText('Workout Flow')).toBeInTheDocument()
+  expect(screen.getByRole('button',{name:'Завершить тренировку'})).toBeInTheDocument()
+  for (const field of ['вес','повторения']) {
+    fireEvent.click(screen.getByRole('button',{name:`Изменить ${field}`}))
+    const input = screen.getByRole('textbox')
+    expect(input).toHaveFocus()
+    Object.assign(viewport,{height:400,offsetTop:150})
+    viewport.dispatchEvent(new Event('resize'))
+    await act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+    expect(document.documentElement.style.getPropertyValue('--visible-viewport-top')).toBe('150px')
+    Object.assign(viewport,{height:812,offsetTop:0})
+    viewport.dispatchEvent(new Event('scroll'))
+    await act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+    expect(input).toHaveFocus()
+    expect(document.documentElement.dataset.keyboardOpen).toBe('false')
+    fireEvent.change(input,{target:{value:'99'}})
+    fireEvent.click(screen.getByRole('button',{name:'Отмена'}))
+  }
+  expect(weightWrite).not.toHaveBeenCalled()
+  expect(repsWrite).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button',{name:'Назад в тесте'}))
+  await screen.findByRole('heading',{name:'Тренировки'})
+  expect(document.documentElement.style.getPropertyValue('--visible-viewport-height')).toBe('812px')
+  expect(document.documentElement.style.getPropertyValue('--visible-viewport-top')).toBe('0px')
+  expect(screen.getByRole('navigation',{name:'Разделы'})).toBeInTheDocument()
+  expect(screen.getByRole('region',{name:'Незавершённая тренировка'})).toBeInTheDocument()
 })

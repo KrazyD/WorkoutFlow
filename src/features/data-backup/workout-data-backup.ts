@@ -37,10 +37,14 @@ export type ImportValidationResult =
   | { readonly success: true; readonly data: WorkoutFlowExportV2 }
   | { readonly success: false; readonly message: string }
 
+export interface WorkoutImportOptions {
+  readonly overwriteWorkingValues?: boolean
+}
+
 export interface WorkoutDataBackupService {
   exportData(): Promise<WorkoutFlowExportV2>
   validateImport(input: unknown): ImportValidationResult
-  importData(data: WorkoutFlowExportV2): Promise<void>
+  importData(data: WorkoutFlowExportV2, options?: WorkoutImportOptions): Promise<void>
 }
 
 export class ActiveWorkoutImportError extends Error {}

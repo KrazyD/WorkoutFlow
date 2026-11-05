@@ -32,3 +32,5 @@ export type {
   WorkoutStep,
   WorkoutTemplate,
 } from './types'
+
+export { getSessionReorderOptions, swapSessionExercises } from './reorder-session'

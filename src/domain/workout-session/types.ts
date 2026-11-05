@@ -18,13 +18,21 @@ export interface SetPosition {
   readonly total: number
 }
 
+/** Original block identity retained only in the execution snapshot. */
+export interface ExecutionBlock {
+  readonly id: string
+  readonly type: 'exercise' | 'superset'
+}
+
 export interface ExerciseWorkoutStep {
+  readonly block?: ExecutionBlock
   readonly type: 'exercise'
   readonly exercise: Exercise
   readonly set?: SetPosition
 }
 
 export interface RestWorkoutStep {
+  readonly block?: ExecutionBlock
   readonly type: 'rest'
   readonly restPreset: RestPreset
 }
@@ -80,6 +88,7 @@ export type WorkoutSessionError =
   | { readonly code: 'SESSION_COMPLETED' }
   | { readonly code: 'NOT_EXERCISE' }
   | { readonly code: 'NOT_REST' }
+  | { readonly code: 'UNSAFE_REORDER' }
 
 export type OperationResult<T> =
   | { readonly success: true; readonly value: T }

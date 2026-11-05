@@ -31,7 +31,9 @@ support and background delivery are not guaranteed.
 
 Settings can export exercises, rest presets, workout templates, and
 feedback preferences to one JSON backup and restore them later. Restore is an
-explicit full replacement: the user reviews entity counts and confirms before
+explicit catalog replacement with matching current working values preserved by
+default (an import checkbox permits overwriting provided values). The user reviews
+entity/match counts and confirms before
 any persisted workout data changes. An unfinished active workout blocks the
 restore and is never included in a backup.
 
@@ -39,7 +41,8 @@ restore and is never included in a backup.
 
 - Mobile-first: the primary use happens on a phone during a workout.
 - Focused: the active step and its completion action dominate the session UI.
-- Predictable: a workout follows the exact saved order.
+- Predictable: a workout starts in template order; explicit swaps affect only the
+  remaining active session and never the template.
 - Local-first: MVP data belongs to one user on one device.
 - Reusable: exercises and rest presets can appear in multiple templates.
 
@@ -78,3 +81,9 @@ names. A contextual floating plus creates the current catalog entity. Session
 screens have their own compact layout without the dock or plus button.
 Working-set progress excludes rest, and the existing deadline countdown has a
 circular SVG visualization. See [workout flow](workout-flow.md) for UI details.
+
+Superset exercise selection opens a searchable bottom sheet from the requested
+block. Cancel leaves the editor unchanged; selecting reveals the new series.
+The session header keeps the brand and a 44px termination button in a safe-area
+row, with the full workout name below. “Завершить тренировку” retains the existing
+confirmation-and-clear behavior; it is not a navigation-only action.

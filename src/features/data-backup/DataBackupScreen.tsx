@@ -1,3 +1,4 @@
+import { AmbiguousExerciseImportError, mergeImportedExercises } from './exercise-import'
 import { workoutAudioService } from '../../shared/audio/workout-audio-service'
 import { workoutVibrationService } from '../../shared/vibration/workout-vibration-service'
 import { WorkoutFeedbackSettingsPanel } from '../workout-feedback/WorkoutFeedbackSettingsPanel'
@@ -27,6 +28,8 @@ export function DataBackupScreen({
   download = downloadWorkoutFlowExport,
 }: DataBackupScreenProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const [overwriteWorkingValues, setOverwriteWorkingValues] = useState(false)
+  const [matchedCount, setMatchedCount] = useState(0)
   const [preview, setPreview] = useState<WorkoutFlowExportV2>()
   const [error, setError] = useState<string>()
   const [success, setSuccess] = useState<string>()
@@ -84,7 +87,18 @@ export function DataBackupScreen({
       setError(validation.message)
       return
     }
-    setPreview(validation.data)
+    setIsBusy(true)
+    try {
+      const current = await service.exportData()
+      const summary = mergeImportedExercises(validation.data.data.exercises, current.data.exercises)
+      setMatchedCount(summary.matchedCount)
+      setOverwriteWorkingValues(false)
+      setPreview(validation.data)
+    } catch (caught) {
+      setError(caught instanceof AmbiguousExerciseImportError ? caught.message : 'Не удалось проверить текущие упражнения. Импорт не выполнен.')
+    } finally {
+      setIsBusy(false)
+    }
   }
 
   const cancelImport = () => {
@@ -97,7 +111,7 @@ export function DataBackupScreen({
     setIsBusy(true)
     setError(undefined)
     try {
-      await service.importData(preview)
+      await service.importData(preview, { overwriteWorkingValues })
       setPreview(undefined)
       setSuccess('Данные успешно импортированы')
     } catch (caught) {
@@ -106,6 +120,7 @@ export function DataBackupScreen({
         setError('Сначала завершите текущую тренировку')
       else if (caught instanceof FeedbackSettingsImportError)
         setError('Не удалось сохранить настройки оповещений. Импорт отменён, текущие данные сохранены')
+      else if (caught instanceof AmbiguousExerciseImportError) setError(caught.message)
       else setError('Не удалось импортировать данные. Текущие данные сохранены')
     } finally {
       setIsBusy(false)
@@ -139,6 +154,19 @@ export function DataBackupScreen({
             <div className="flex justify-between gap-4"><dt>Тренировок</dt><dd>{preview.data.workoutTemplates.length}</dd></div>
             <div><dt>Настройки оповещений</dt><dd className="text-slate-400">Звук — {preview.data.feedbackSettings.soundEnabled ? 'включён' : 'выключен'}, вибрация — {preview.data.feedbackSettings.vibrationEnabled ? 'включена' : 'выключена'}</dd></div>
           </dl>
+          <div className="mt-5">
+            <label className="flex min-h-11 items-start gap-3 text-sm">
+              <input type="checkbox" checked={overwriteWorkingValues} disabled={isBusy}
+                aria-describedby="import-values-help"
+                className="mt-1 size-5 shrink-0 accent-lime-300"
+                onChange={(event) => setOverwriteWorkingValues(event.target.checked)} />
+              Перезаписать веса и повторы при совпадении названий упражнений
+            </label>
+            <p id="import-values-help" className="mt-2 text-sm text-slate-400">
+              {overwriteWorkingValues ? 'Рабочие значения совпавших упражнений будут взяты из файла.' : 'Текущие веса и повторы совпавших упражнений будут сохранены.'} Если значение в файле не указано, текущее сохранится.
+            </p>
+            <p className="mt-2 text-sm text-lime-300">Совпадений по названию: {matchedCount} из {preview.data.exercises.length}</p>
+          </div>
           <p className="mt-5 rounded-xl bg-amber-950/70 p-3 text-sm text-amber-100">Текущие упражнения, варианты отдыха и шаблоны тренировок будут заменены данными из файла.</p>
           <div className="mt-4 flex flex-col-reverse gap-3 sm:flex-row">
             <button type="button" disabled={isBusy} onClick={cancelImport} className="min-h-11 rounded-xl border border-slate-700 px-4 py-2 font-semibold">Отмена</button>

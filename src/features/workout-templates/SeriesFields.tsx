@@ -46,7 +46,7 @@ export function SeriesFields({
   readonly onChange: (series: ExerciseWorkoutTemplateStep) => void
 }) {
   return (
-    <label className="mt-3 block text-sm">
+    <label data-series-id={series.id} className="mt-3 block text-sm">
       Подходы — {name}
       <input
         type="number"

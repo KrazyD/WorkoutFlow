@@ -108,6 +108,11 @@ Active sessions are never exported or imported. Version 1 files are rejected.
 Strict Zod validation runs before any database mutation, including when the
 service is called directly. It rejects invalid weights/counts, duplicate IDs
 (including nested series), unknown fields and missing catalog references.
+Restore matches exercise names after trimming/collapsing whitespace and
+lowercasing. It preserves matching current weights/repetitions unless the user
+opts into overwriting; absent/null file values never clear existing ones.
+Ambiguity aborts. Preview counts are advisory; the merge reads current exercises
+again inside the write transaction. File IDs and references stay intact.
 Restore replaces all three catalog tables in one Dexie transaction and locks
 the active-session table, rejecting any existing session. A database failure
 rolls back every table. Settings are saved before transaction completion; a

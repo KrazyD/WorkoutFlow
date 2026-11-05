@@ -233,7 +233,7 @@ describe('starting a workout', () => {
       templateSnapshot: { id: 'legs', name: 'Тренировка ног' },
     })
     expect(activeRepository.session?.templateSnapshot.steps[0]).toEqual({
-      type: 'exercise', exercise: { id: 'squat', name: 'Приседания' }, set: { seriesId: 'step-squat', number: 1, total: 1 },
+      type: 'exercise', block: { id: 'step-squat', type: 'exercise' }, exercise: { id: 'squat', name: 'Приседания' }, set: { seriesId: 'step-squat', number: 1, total: 1 },
     })
     expect(navigate).toHaveBeenCalledWith('/workout-session')
   })
@@ -539,4 +539,43 @@ it.each(['create', 'edit'])('scrolls to Save in %s mode', async (mode) => {
   expect(scroll).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
   act(() => notify([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver))
   expect(screen.queryByRole('button', { name: 'Прокрутить к сохранению' })).not.toBeInTheDocument()
+})
+
+it('opens a searchable sheet for the requested superset, cancels without scrolling, and saves only the chosen block', async () => {
+  const group = (id: string) => ({ id, type:'superset' as const, series:[
+    {id:`${id}-a`,type:'exercise' as const,exerciseId:squat.id},
+    {id:`${id}-b`,type:'exercise' as const,exerciseId:pushUp.id},
+  ]})
+  const original = { id:'two',name:'Два суперсета',steps:[group('first'),group('second')] }
+  const repository = new InMemoryWorkoutTemplateRepository([original])
+  renderScreen(repository)
+  await screen.findByRole('heading',{name:original.name})
+  fireEvent.click(screen.getByRole('button',{name:'Изменить'}))
+  const editor = await screen.findByRole('region',{name:'Изменить тренировку'})
+  const scroller = editor.closest('.page-content') as HTMLElement
+  scroller.scrollTop = 300
+  const buttons = within(editor).getAllByRole('button',{name:'Добавить в суперсет'})
+  buttons[1]!.focus()
+  fireEvent.click(buttons[1]!)
+  let sheet = screen.getByRole('dialog',{name:'Добавить в суперсет'})
+  expect(within(sheet).getByRole('heading',{name:'Добавить в суперсет'})).toHaveFocus()
+  fireEvent.change(within(sheet).getByRole('searchbox'),{target:{value:'ОТЖ'}})
+  expect(within(sheet).queryByRole('button',{name:squat.name})).not.toBeInTheDocument()
+  expect(within(sheet).getByRole('button',{name:pushUp.name})).toBeInTheDocument()
+  fireEvent.click(within(sheet).getByRole('button',{name:'Отмена'}))
+  expect(scroller.scrollTop).toBe(300)
+  expect(buttons[1]).toHaveFocus()
+  expect(await repository.getById('two')).toEqual(original)
+  fireEvent.click(buttons[1]!)
+  sheet = screen.getByRole('dialog',{name:'Добавить в суперсет'})
+  expect(within(sheet).getByRole('searchbox')).toHaveValue('')
+  fireEvent.click(within(sheet).getByRole('button',{name:pushUp.name}))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(within(editor).getAllByLabelText(`Подходы — ${pushUp.name}`)).toHaveLength(3)
+  fireEvent.click(within(editor).getByRole('button',{name:'Сохранить'}))
+  await screen.findByRole('button',{name:'Начать'})
+  const saved = (await repository.getById('two'))!
+  expect(saved.steps[0]).toEqual(original.steps[0])
+  expect(saved.steps).toHaveLength(2)
+  expect(saved.steps[1]).toMatchObject({id:'second',series:[...group('second').series,expect.objectContaining({exerciseId:pushUp.id})]})
 })

@@ -77,6 +77,22 @@ extensions in snapshots written before the field existed.
 
 No completed-set results, workout statistics or progression history are kept.
 
+## Temporary session order
+
+The current exercise can swap its remaining standalone series with a later
+standalone series, including their internal rests. Performed steps are kept as
+an unchanged prefix. Inside a superset, two pending series in the current round
+swap positions in each remaining round where both have sets. Unequal counts
+remain valid; other members and all rest slots stay in place. Cross-superset
+moves and a target with no pending set in the current round are unavailable.
+
+IDs, set numbers/totals, weights and repetitions stay attached to each exercise.
+The updated snapshot is written as one active-session record before rendering;
+the current index and start time do not change. Restoration uses this saved
+order, while the next workout resolves the original template again. Existing
+active snapshots without block metadata continue normally but cannot reorder;
+no structure is inferred from exercise names or repeated IDs.
+
 ## Storage compatibility
 
 IndexedDB stays at schema version 4: no tables or indexes change; the new fields
@@ -88,7 +104,13 @@ an explicit series or superset to obtain a multi-set counter.
 
 JSON backup uses `workout-flow-export` version 2 and includes catalogs, weights, repetitions,
 all series/group IDs, set counts, rest references, template order and feedback
-settings. It excludes active sessions. JSON v1 is rejected with a clear message.
+settings. It excludes active sessions. JSON v1 is rejected with a clear message. Import matches exercises by trimmed,
+whitespace-collapsed, lowercase names, never approximately. Current working
+values are retained by default; an import-only opt-in takes numeric values from
+the file. Missing/null imported values preserve existing values in either mode.
+Ambiguous names abort import, while new exercises retain file IDs/values and
+template references. The merge reads current catalog values under the same
+transaction lock as replacement. This option is not part of JSON v2.
 
 ## Time and boundaries
 

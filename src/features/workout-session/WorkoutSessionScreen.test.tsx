@@ -152,12 +152,12 @@ describe('active workout session', () => {
   it('requires confirmation before abandoning the session', async () => {
     const { repository, navigate } = renderScreen()
     await screen.findByText('Рабочий подход 1 из 2')
-    fireEvent.click(screen.getByRole('button', { name: 'Выйти' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Завершить тренировку' }))
     const dialog = screen.getByRole('alertdialog')
     fireEvent.click(within(dialog).getByRole('button', { name: 'Продолжить тренировку' }))
     expect(repository.session).toBeDefined()
     expect(navigate).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: 'Выйти' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Завершить тренировку' }))
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Завершить тренировку' }))
     await waitFor(() => expect(navigate).toHaveBeenCalledWith('/workouts'))
     expect(repository.session).toBeUndefined()
@@ -437,4 +437,36 @@ describe('repetitions editor', () => {
     expect(screen.getByLabelText('Количество повторений')).toHaveValue('10')
     expect(screen.getByText('Не указаны')).toBeInTheDocument()
   })
+})
+
+it('cancels swapping without writes, commits before rendering, and restores the saved order', async () => {
+  const { resolveWorkoutTemplate } = await import('../../domain/resolve-workout-template')
+  const resolved = resolveWorkoutTemplate({ id: 't', name: 'Порядок', steps: [
+    { id: 'sa', type: 'exercise', exerciseId: 'a', setCount: 2 },
+    { id: 'sb', type: 'exercise', exerciseId: 'b', setCount: 1 },
+  ] }, [{id:'a',name:'Жим',lastWeightKg:15,lastReps:12},{id:'b',name:'Тяга',lastWeightKg:20,lastReps:10}], [])!
+  const repository = new MemoryRepository(valueOf(startWorkout(valueOf(createActiveWorkoutSession(resolved)), 100)))
+  const update = vi.spyOn(repository, 'update')
+  const view = render(<WorkoutSessionScreen repository={repository} navigate={vi.fn()} />)
+  fireEvent.click(await screen.findByRole('button', { name: /Поменять порядок/ }))
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Отмена' }))
+  expect(update).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: /Поменять порядок/ }))
+  let commit: () => void = () => undefined
+  update.mockImplementationOnce(async (next) => {
+    await new Promise<void>((resolve) => { commit = resolve })
+    repository.session = next
+  })
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Тяга/ }))
+  expect(screen.getByRole('heading', { name: 'Жим' })).toBeInTheDocument()
+  expect(within(screen.getByRole('dialog')).getByRole('button', { name: /Тяга/ })).toBeDisabled()
+  await act(async () => commit())
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  expect(screen.getByRole('heading', { name: 'Тяга' })).toBeInTheDocument()
+  expect(screen.getByText('20 кг')).toBeInTheDocument()
+  expect(screen.getByText('Последний подход')).toBeInTheDocument()
+  expect(within(screen.getByRole('complementary')).getByText('Жим')).toBeInTheDocument()
+  view.unmount()
+  renderScreen(repository)
+  expect(await screen.findByRole('heading', { name: 'Тяга' })).toBeInTheDocument()
 })

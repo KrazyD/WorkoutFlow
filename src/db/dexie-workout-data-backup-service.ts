@@ -1,3 +1,4 @@
+import { mergeImportedExercises } from '../features/data-backup/exercise-import'
 import type { WorkoutFlowDatabase } from './database'
 import type { ExerciseRepository } from '../features/exercises/exercise-repository'
 import type { RestPresetRepository } from '../features/rest-presets/rest-preset-repository'
@@ -11,6 +12,7 @@ import {
   FeedbackSettingsImportError,
   validateWorkoutFlowImport,
   type WorkoutDataBackupService,
+  type WorkoutImportOptions,
   type WorkoutFlowExportV2,
 } from '../features/data-backup/workout-data-backup'
 
@@ -48,7 +50,7 @@ export class DexieWorkoutDataBackupService implements WorkoutDataBackupService {
     return validateWorkoutFlowImport(input)
   }
 
-  async importData(input: WorkoutFlowExportV2): Promise<void> {
+  async importData(input: WorkoutFlowExportV2, options: WorkoutImportOptions = {}): Promise<void> {
     const validation = validateWorkoutFlowImport(input)
     if (!validation.success) throw new Error(validation.message)
     const backup = validation.data
@@ -69,10 +71,13 @@ export class DexieWorkoutDataBackupService implements WorkoutDataBackupService {
           // Lock the session table too: another tab cannot start during restore.
           if (await this.database.activeWorkoutSessions.count())
             throw new ActiveWorkoutImportError()
+          // Read and merge under the same write lock as the replacement. A preview
+          // cannot overwrite values edited by another tab after file selection.
+          const merged = mergeImportedExercises(backup.data.exercises, await this.database.exercises.toArray(), options)
           await this.database.workoutTemplates.clear()
           await this.database.restPresets.clear()
           await this.database.exercises.clear()
-          await this.database.exercises.bulkAdd([...backup.data.exercises])
+          await this.database.exercises.bulkAdd([...merged.exercises])
           await this.database.restPresets.bulkAdd([...backup.data.restPresets])
           await this.database.workoutTemplates.bulkAdd([
             ...backup.data.workoutTemplates,

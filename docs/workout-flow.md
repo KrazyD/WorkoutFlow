@@ -106,18 +106,20 @@ as its segmented catalog routes; Settings (`/settings/data`, also reachable from
 `/settings`) contains the existing feedback preferences and JSON backup UI.
 `/builder` redirects to exercises. Existing direct links continue working.
 
-`CatalogPageLayout` owns a fixed-height `100dvh` shell with a stationary header,
+`CatalogPageLayout` fills the shared visible-viewport root with a stationary header,
 one scrolling content region and a bottom glass dock. Only the selected dock
 item expands its icon label, using short CSS transitions; all links have
 accessible names and `aria-current`. Reduced motion disables transitions.
-`useVisibleViewport` adjusts the root to keyboard-induced Visual Viewport
-height changes when available. Opaque panel styling is the fallback without backdrop filtering. Safe-area
+`useVisibleViewport` follows both VisualViewport height and offset on a fixed
+root, including scroll, resize, foreground and pageshow changes. It reveals
+focused controls inside their existing content scroller, without document scroll
+resets. Numeric focus uses `preventScroll`. Opaque panel styling is the fallback without backdrop filtering. Safe-area
 padding protects the header, dock and floating controls.
 
 The contextual plus creates a workout, exercise or rest preset. It is absent in
 Settings, active sessions and while an editor is open. Bottom content padding
-lets the last item scroll above both floating controls. Focused keyboard inputs hide
-the dock and floating controls to avoid obscuring keyboard input. Opening an
+lets the last item scroll above both floating controls. Focused keyboard inputs in a
+reduced visual viewport hide the dock and floating controls to avoid obscuring keyboard input. Opening an
 editor scrolls its content to the top. Edited catalog cards are temporarily
 filtered out without changing stored records or showing a false empty state.
 
@@ -134,3 +136,23 @@ same current timestamp and deadline as the existing single refresh interval;
 there is no second clock or timer. Adding 30 seconds expands the denominator,
 and recovery calculates the actual remaining fraction. Automatic expiry,
 skipping, feedback deduplication and sound/vibration paths are unchanged.
+
+## Session and editor refinements
+
+“Поменять порядок” opens the remaining safe candidates in a modal bottom sheet.
+Swaps are persisted before display, affect only pending steps, and retain series
+IDs/counters/working values. See [domain model](domain-model.md) for superset
+restrictions. “Далее” and last-set markers read the updated saved order.
+
+“Добавить в суперсет” opens a searchable modal bottom sheet at once. Selection
+adds to that block, reveals the new series and returns focus; dismissal leaves
+the editor position and draft unchanged. The sheet shares root viewport geometry
+and prevents interaction with the underlying dock/editor while open.
+
+The session brand and termination action share a safe-area top row; the full
+workout name occupies the row below. The former “Выйти” cleared the active
+session after confirmation, so it is now named “Завершить тренировку” and retains
+that behavior. Browser navigation to the list still preserves the session.
+
+See [iOS and session UX verification](ios-keyboard-and-session-ux-verification.md)
+for diagnostics, regression coverage and physical-device acceptance limits.

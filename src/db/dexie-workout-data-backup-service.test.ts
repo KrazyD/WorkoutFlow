@@ -125,3 +125,35 @@ it('rolls back all tables after a database error during otherwise valid import',
   expect(await database.exercises.toArray()).toEqual([{ id: 'old', name: 'Старое' }])
   expect(await database.restPresets.count()).toBe(0)
 })
+
+it.each([false, true])('merges current values under transaction lock with overwrite=%s and retains v2 links/settings', async (overwriteWorkingValues) => {
+  const database = new WorkoutFlowDatabase(`backup-merge-${crypto.randomUUID()}`); databases.push(database)
+  await database.exercises.add({ id:'old',name:'  нОВОЕ  ',lastWeightKg:15,lastReps:12 })
+  const { service } = createService(database)
+  const data = backup()
+  const input = { ...data, data: { ...data.data, exercises:[{...data.data.exercises[0]!, lastWeightKg:10,lastReps:10}] } }
+  await service.importData(input, { overwriteWorkingValues })
+  expect(await database.exercises.get('new-exercise')).toMatchObject({ lastWeightKg:overwriteWorkingValues ? 10 : 15,lastReps:overwriteWorkingValues ? 10 : 12 })
+  expect(await database.workoutTemplates.toArray()).toEqual(input.data.workoutTemplates)
+  expect((await service.exportData()).version).toBe(2)
+})
+
+it('preserves both working values for old v2 backups without fields even with overwrite enabled', async () => {
+  const database = new WorkoutFlowDatabase(`backup-missing-${crypto.randomUUID()}`); databases.push(database)
+  await database.exercises.add({ id:'old',name:'Новое',lastWeightKg:15,lastReps:12 })
+  const { service } = createService(database)
+  await service.importData(backup(), {overwriteWorkingValues:true})
+  expect(await database.exercises.get('new-exercise')).toMatchObject({ lastWeightKg:15,lastReps:12 })
+})
+
+it('leaves every store untouched when name matching is ambiguous', async () => {
+  const database = new WorkoutFlowDatabase(`backup-ambiguous-${crypto.randomUUID()}`); databases.push(database)
+  const before = [{id:'a',name:'Новое',lastWeightKg:15},{id:'b',name:'новое',lastReps:12}]
+  await database.exercises.bulkAdd(before)
+  const { service, store } = createService(database)
+  await expect(service.importData(backup())).rejects.toThrow('Неоднозначное название')
+  expect(await database.exercises.toArray()).toEqual(before)
+  expect(await database.restPresets.count()).toBe(0)
+  expect(await database.workoutTemplates.count()).toBe(0)
+  expect(store.save).not.toHaveBeenCalled()
+})

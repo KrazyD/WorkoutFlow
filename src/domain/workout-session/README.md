@@ -45,3 +45,18 @@ series ID, number and total. `getSetProgress` derives the counter and last-set
 marker from it. `getNextExercise` skips rest in the saved execution order.
 `setSessionExerciseWeight` updates every matching exercise in a snapshot;
 persistence atomically updates the catalog too. No per-set history is kept.
+
+## Temporary order
+
+Resolved steps optionally retain their original execution `block` ID/type.
+`getSessionReorderOptions` and `swapSessionExercises` operate only during exercise
+and only on the unperformed suffix. Standalone series exchange their entire
+remaining sequences and internal rests. Within one superset, two pending
+members of the current round exchange positions in every remaining round where
+both exist. Other members and rest slots remain unchanged. Set metadata and
+exercise values travel with their exercise. Cross-superset exchanges and
+next-round-only candidates are excluded. Older snapshots without block metadata
+remain runnable but cannot be reordered safely.
+
+The feature persists the returned snapshot through the existing session
+repository before showing the new order; templates and catalogs are untouched.

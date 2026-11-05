@@ -1,3 +1,4 @@
+import { ExercisePickerSheet } from './ExercisePickerSheet'
 import { countTemplateWorkingSets } from '../../domain/workout-template'
 import { getWorkingSetProgress } from '../../domain/workout-session'
 import { resolveWorkoutTemplate } from '../../domain/resolve-workout-template'
@@ -6,6 +7,7 @@ import { BlockFields } from './SeriesFields'
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -115,6 +117,8 @@ export function WorkoutTemplatesScreen({
     useState<WorkoutTemplateFormValues>(emptyForm)
   const [formErrors, setFormErrors] = useState<WorkoutTemplateFormErrors>({})
   const saveButton = useRef<HTMLButtonElement>(null)
+  const editorForm = useRef<HTMLFormElement>(null)
+  const addedSeries = useRef<string>(undefined)
   const [pickerTarget, setPickerTarget] = useState<string>()
   const [picker, setPicker] = useState<Picker>(null)
   const [templateToRemove, setTemplateToRemove] =
@@ -263,6 +267,7 @@ export function WorkoutTemplatesScreen({
   }
 
   const appendStep = (step: WorkoutTemplateStep) => {
+    if (pickerTarget && step.type === 'exercise') addedSeries.current = step.id
     setFormValues((current) => ({
       ...current,
       steps:
@@ -278,6 +283,20 @@ export function WorkoutTemplatesScreen({
     setPicker(null)
     setPickerTarget(undefined)
   }
+
+  useLayoutEffect(() => {
+    const id = addedSeries.current
+    if (!id) return
+    addedSeries.current = undefined
+    const series = Array.from(editorForm.current?.querySelectorAll<HTMLElement>('[data-series-id]') ?? []).find((element) => element.dataset.seriesId === id)
+    const scroller = series?.closest<HTMLElement>('.page-content')
+    if (!series || !scroller) return
+    const item = series.getBoundingClientRect()
+    const area = scroller.getBoundingClientRect()
+    if (area.height <= 0) return
+    if (item.bottom > area.bottom - 16) scroller.scrollTop += item.bottom - area.bottom + 16
+    else if (item.top < area.top + 16) scroller.scrollTop += item.top - area.top - 16
+  }, [formValues.steps])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -503,7 +522,7 @@ export function WorkoutTemplatesScreen({
               : 'Изменить тренировку'}
           </h2>
 
-          <form className="mt-5 space-y-5" onSubmit={handleSubmit} noValidate>
+          <form ref={editorForm} className="mt-5 space-y-5" onSubmit={handleSubmit} noValidate>
             <div>
               <label htmlFor="workout-name" className="text-sm font-medium">
                 Название тренировки
@@ -657,42 +676,9 @@ export function WorkoutTemplatesScreen({
             </div>
 
             {picker === 'exercise' ? (
-              <section
-                aria-label="Выбор упражнения"
-                className="rounded-xl bg-slate-800 p-4"
-              >
-                {exercises.length === 0 ? (
-                  <p className="text-sm text-slate-300">
-                    Упражнения ещё не созданы.{' '}
-                    <Link
-                      to="/exercises"
-                      className="font-semibold text-lime-300"
-                    >
-                      Перейти к упражнениям
-                    </Link>
-                  </p>
-                ) : (
-                  <ul className="space-y-2">
-                    {exercises.map((exercise) => (
-                      <li key={exercise.id}>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            appendStep({
-                              id: createId(),
-                              type: 'exercise',
-                              exerciseId: exercise.id,
-                            })
-                          }
-                          className="min-h-11 w-full rounded-lg bg-slate-950 px-3 py-2 text-left text-sm"
-                        >
-                          {exercise.name}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
+              <ExercisePickerSheet exercises={exercises} forSuperset={Boolean(pickerTarget)}
+                onClose={() => { setPicker(null); setPickerTarget(undefined) }}
+                onChoose={(exercise) => appendStep({ id: createId(), type: 'exercise', exerciseId: exercise.id })} />
             ) : null}
 
             {picker === 'rest' ? (

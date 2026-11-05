@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useId, useLayoutEffect, useRef, useState } from 'react'
 import type { WeightInputResult } from '../domain/working-weight'
 
 interface NumericValueCardProps {
@@ -21,6 +21,10 @@ export function NumericValueCard(props: NumericValueCardProps) {
   const [input, setInput] = useState('')
   const [error, setError] = useState<string>()
   const errorId = useId()
+  const field = useRef<HTMLInputElement>(null)
+  useLayoutEffect(() => {
+    if (props.editing) field.current?.focus({ preventScroll: true })
+  }, [props.editing])
   return (
     <section
       aria-label={props.label}
@@ -51,7 +55,7 @@ export function NumericValueCard(props: NumericValueCardProps) {
           <label className="block text-sm">
             {props.inputLabel}
             <input
-              autoFocus
+              ref={field}
               type="text"
               inputMode={props.inputMode}
               value={input}

@@ -17,7 +17,7 @@
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 0;
 }
 
 .scroll-to-save {
@@ -41,11 +41,16 @@ body {
   box-sizing: border-box;
 }
 html,
-body,
-#root {
-  height: 100%;
-}
 body {
+  height: 100%;
+  overflow: hidden;
+}
+#root {
+  position: fixed;
+  top: var(--visible-viewport-top, 0px);
+  left: 0;
+  width: 100%;
+  height: var(--visible-viewport-height, 100dvh);
   overflow: hidden;
 }
 button,
@@ -105,8 +110,7 @@ textarea {
   position: relative;
   display: flex;
   flex-direction: column;
-  height: 100vh;
-  height: 100dvh;
+  height: 100%;
   max-width: 640px;
   margin-inline: auto;
   overflow: hidden;
@@ -304,19 +308,19 @@ textarea {
 .rest-block {
   border-style: dashed;
 }
-:is(.application-frame, .app-shell):has(
+:root:not([data-keyboard-open='false']) :is(.application-frame, .app-shell):has(
     input:not([type='checkbox']):not([type='file']):focus,
     textarea:focus,
     select:focus
   )
   .bottom-navigation,
-:is(.application-frame, .app-shell):has(
+:root:not([data-keyboard-open='false']) :is(.application-frame, .app-shell):has(
     input:not([type='checkbox']):not([type='file']):focus,
     textarea:focus,
     select:focus
   )
   .add-button,
-:is(.application-frame, .app-shell):has(
+:root:not([data-keyboard-open='false']) :is(.application-frame, .app-shell):has(
     input:not([type='checkbox']):not([type='file']):focus,
     textarea:focus,
     select:focus
@@ -347,11 +351,11 @@ textarea {
 .session-header {
   display: flex;
   flex: none;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
+  flex-direction: column;
   padding-bottom: 0.75rem;
   background: #020617;
+  position: relative;
+  z-index: 1;
 }
 .session-header h1 {
   white-space: normal;
@@ -536,10 +540,92 @@ textarea {
   padding-top: max(0.75rem, env(safe-area-inset-top));
 }
 
-#root {
-  height: var(--visible-viewport-height, 100dvh);
-}
 .page-content li button.bg-red-500 {
   background-color: #ef4444;
   border-color: #ef4444;
 }
+
+.bottom-sheet {
+  position: fixed;
+  top: var(--visible-viewport-top, 0px);
+  left: 0;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+  max-width: none;
+  height: var(--visible-viewport-height, 100dvh);
+  max-height: none;
+  margin: 0;
+  padding: max(0.75rem, env(safe-area-inset-top, 0px)) 0 0;
+  border: 0;
+  background: #02061799;
+  color: #f8fafc;
+}
+.bottom-sheet[open] {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.bottom-sheet::backdrop { background: #02061780; }
+.sheet-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 640px);
+  max-height: 100%;
+  border-radius: 1.5rem 1.5rem 0 0;
+  background: #101a2c;
+  overflow: hidden;
+}
+.sheet-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.sheet-close { min-width: 44px; min-height: 44px; border: 1px solid var(--border); border-radius: 50%; }
+.sheet-content {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 1rem 1.25rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  scroll-padding-block: 1rem;
+}
+.sheet-option {
+  display: block;
+  width: 100%;
+  min-height: 52px;
+  padding: 0.75rem 1rem;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: #1b2940;
+}
+
+.session-topline {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.session-topline .brand { min-width: 0; }
+.session-exit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  flex: none;
+  max-width: 63%;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #101a2c;
+  color: #e2e8f0;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+.session-exit svg { flex: none; }

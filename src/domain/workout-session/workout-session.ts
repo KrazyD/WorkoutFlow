@@ -32,6 +32,7 @@ const cloneStep = (step: WorkoutStep): WorkoutStep => {
   if (step.type === 'exercise') {
     return {
       type: 'exercise',
+      ...(step.block ? { block: { ...step.block } } : {}),
       ...(step.set ? { set: { ...step.set } } : {}),
       exercise: cloneExercise(step.exercise),
     }
@@ -39,6 +40,7 @@ const cloneStep = (step: WorkoutStep): WorkoutStep => {
 
   return {
     type: 'rest',
+    ...(step.block ? { block: { ...step.block } } : {}),
     restPreset: cloneRestPreset(step.restPreset),
   }
 }
