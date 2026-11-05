@@ -79,19 +79,27 @@ No completed-set results, workout statistics or progression history are kept.
 
 ## Temporary session order
 
-The current exercise can swap its remaining standalone series with a later
-standalone series, including their internal rests. Performed steps are kept as
-an unchanged prefix. Inside a superset, two pending series in the current round
-swap positions in each remaining round where both have sets. Unequal counts
-remain valid; other members and all rest slots stay in place. Cross-superset
-moves and a target with no pending set in the current round are unavailable.
+The session editor projects contiguous execution `block` ranges into logical
+standalone series or supersets. All future ranges can be permuted independently
+of the active block. The active block is pinned; completed steps and the active
+exercise/rest remain exactly unchanged. A superset member order is applied to
+pending exercise slots in each remaining round, including incomplete rounds.
+Optional session-only `block.seriesOrder` records the chosen member rank so
+completed prefixes do not override it when reopening the editor.
 
-IDs, set numbers/totals, weights and repetitions stay attached to each exercise.
-The updated snapshot is written as one active-session record before rendering;
-the current index and start time do not change. Restoration uses this saved
-order, while the next workout resolves the original template again. Existing
-active snapshots without block metadata continue normally but cannot reorder;
-no structure is inferred from exercise names or repeated IDs.
+Internal rests travel with their block. Explicit unowned rests retain their
+boundary ordinal between execution ranges; explicit leading/trailing pauses stay
+in place. No rest is synthesized or resized. The active deadline/origin and index
+do not change. Series IDs, set numbers/totals, weights and repetitions travel with
+each exercise. The draft supports repeated edits and Cancel without storage writes.
+Apply revalidates against the live session and writes the entire snapshot as one
+active-session record before rendering. Rest timers and feedback continue normally
+while editing. A stale plan that would move an already started block is rejected.
+
+Restoration uses the saved execution snapshot. The next workout resolves the
+original template again. Existing snapshots without block/set metadata continue
+normally but cannot reorder; no grouping is inferred from names or repeated IDs.
+See [session order](session-order.md) for interaction details and validation.
 
 ## Storage compatibility
 

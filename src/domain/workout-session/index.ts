@@ -33,4 +33,13 @@ export type {
   WorkoutTemplate,
 } from './types'
 
-export { getSessionReorderOptions, swapSessionExercises } from './reorder-session'
+export {
+  getSessionReorderBlocks,
+  getSessionOrder,
+  reorderSession,
+} from './reorder-session'
+export type {
+  ReorderBlock,
+  ReorderSeries,
+  SessionOrder,
+} from './reorder-session'

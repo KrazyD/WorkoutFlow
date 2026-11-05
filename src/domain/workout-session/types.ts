@@ -22,6 +22,8 @@ export interface SetPosition {
 export interface ExecutionBlock {
   readonly id: string
   readonly type: 'exercise' | 'superset'
+  /** Session-only member order, including members with no remaining sets. */
+  readonly seriesOrder?: readonly string[]
 }
 
 export interface ExerciseWorkoutStep {

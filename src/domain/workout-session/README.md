@@ -48,15 +48,26 @@ persistence atomically updates the catalog too. No per-set history is kept.
 
 ## Temporary order
 
-Resolved steps optionally retain their original execution `block` ID/type.
-`getSessionReorderOptions` and `swapSessionExercises` operate only during exercise
-and only on the unperformed suffix. Standalone series exchange their entire
-remaining sequences and internal rests. Within one superset, two pending
-members of the current round exchange positions in every remaining round where
-both exist. Other members and rest slots remain unchanged. Set metadata and
-exercise values travel with their exercise. Cross-superset exchanges and
-next-round-only candidates are excluded. Older snapshots without block metadata
-remain runnable but cannot be reordered safely.
+Resolved steps retain their execution `block` ID/type. `getSessionReorderBlocks`
+projects contiguous ranges into standalone series and supersets. `getSessionOrder`
+creates a session-only draft plan; `reorderSession` validates and applies it.
+Future blocks move as whole ranges with every set and internal rest. The block
+containing the active step is pinned, even on its first set. Completed steps and
+the active exercise/rest are an immutable prefix.
 
-The feature persists the returned snapshot through the existing session
-repository before showing the new order; templates and catalogs are untouched.
+Superset member permutations sort only pending exercise slots by round and
+requested series rank. Rest slots are unchanged. Optional session-only
+`block.seriesOrder` retains the chosen rank after a partial round, so reopening
+the editor or another reorder cannot infer the wrong order from completed sets.
+Set IDs, numbers/totals and resolved exercise values stay with each set.
+
+Explicit rests without block metadata stay at their boundary ordinal while
+future block ranges replace those slots. Leading/trailing explicit rests remain
+explicit; no pause is inserted, dropped or resized. Absolute active rest deadlines
+and origins are unchanged. Legacy snapshots without block metadata remain runnable
+but cannot be reordered safely. An unchanged plan preserves the exact old order.
+
+The feature keeps a local draft and revalidates against the latest live session
+at Apply, including after rest expiry. It persists one snapshot through the
+existing session repository before showing the saved order. Templates and catalogs
+are untouched. See [session order](../../../docs/session-order.md) for mobile QA.

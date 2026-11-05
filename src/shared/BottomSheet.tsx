@@ -6,11 +6,15 @@ export function BottomSheet({
   onClose,
   busy = false,
   children,
+  fullScreen = false,
+  footer,
 }: {
   readonly title: string
   readonly onClose: () => void
   readonly busy?: boolean
   readonly children: ReactNode
+  readonly fullScreen?: boolean
+  readonly footer?: ReactNode
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const heading = useRef<HTMLHeadingElement>(null)
@@ -30,7 +34,7 @@ export function BottomSheet({
   return createPortal(
     <dialog
       ref={dialog}
-      className="bottom-sheet"
+      className={`bottom-sheet${fullScreen ? ' fullscreen-sheet' : ''}`}
       aria-modal="true"
       aria-labelledby={titleId}
       onCancel={(event) => {
@@ -62,6 +66,7 @@ export function BottomSheet({
           </button>
         </header>
         <div className="sheet-content">{children}</div>
+        {footer}
       </section>
     </dialog>,
     document.getElementById('root') ?? document.body,

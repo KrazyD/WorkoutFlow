@@ -1,4 +1,4 @@
-import { BottomSheet } from '../../shared/BottomSheet'
+import { SessionOrderEditor } from './SessionOrderEditor'
 import { NumericValueCard } from '../../shared/NumericValueCard'
 import { parseWorkingReps } from '../../domain/working-reps'
 import { RestTimer } from './RestTimer'
@@ -9,8 +9,8 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
-  getSessionReorderOptions,
-  swapSessionExercises,
+  reorderSession,
+  type SessionOrder,
   completeCurrentExercise,
   completeCurrentRest,
   extendCurrentRest,
@@ -70,6 +70,7 @@ export function WorkoutSessionScreen({
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [showReorder, setShowReorder] = useState(false)
+  const [reorderError, setReorderError] = useState<string>()
   const [showExitConfirmation, setShowExitConfirmation] = useState(false)
   const [error, setError] = useState<string>()
   const [restCompletionFailed, setRestCompletionFailed] = useState(false)
@@ -286,10 +287,15 @@ export function WorkoutSessionScreen({
     }
   }
 
-  const reorder = async (seriesId: string) => {
+  const reorder = async (order: SessionOrder) => {
     if (!session || transitionInFlight.current) return
-    const result = swapSessionExercises(session, seriesId)
-    if (!result.success) return
+    const result = reorderSession(session, order)
+    if (!result.success) {
+      setReorderError(
+        'Текущий блок изменился. Закройте редактор и откройте его снова: начатые блоки переносить нельзя.',
+      )
+      return
+    }
     transitionInFlight.current = true
     setIsSaving(true)
     setError(undefined)
@@ -298,8 +304,8 @@ export function WorkoutSessionScreen({
       setSession(result.value)
       setShowReorder(false)
     } catch (cause) {
-      reportError(cause, 'Не удалось сохранить порядок. Упражнения не переставлены.')
-      setShowReorder(false)
+      console.error('Session order persistence failed.', cause)
+      setReorderError('Не удалось сохранить порядок. Попробуйте ещё раз.')
     } finally {
       transitionInFlight.current = false
       setIsSaving(false)
@@ -366,22 +372,13 @@ export function WorkoutSessionScreen({
         </header>
 
         {showReorder ? (
-          <BottomSheet title="Поменять порядок" busy={isSaving} onClose={() => setShowReorder(false)}>
-            <p className="mb-4 text-sm text-slate-400">
-              Меняются местами оставшиеся подходы. Суперсет можно переставлять только внутри его текущего круга.
-            </p>
-            {getSessionReorderOptions(session).length ? (
-              <ul className="space-y-2">
-                {getSessionReorderOptions(session).map((option) => (
-                  <li key={option.seriesId}><button type="button" className="sheet-option" disabled={isSaving} onClick={() => void reorder(option.seriesId)}>
-                    <span className="block font-semibold">{option.step.exercise.name}</span>
-                    <span className="text-sm text-slate-400">Осталось подходов: {option.remainingSets} · Следующий: {option.step.set?.number}{option.step.block?.type === 'superset' ? ' · Текущий суперсет' : ''}</span>
-                  </button></li>
-                ))}
-              </ul>
-            ) : <p role="status">Нет доступных упражнений для безопасной перестановки. Перестановка между суперсетом и другими блоками недоступна. Для ранее начатой тренировки без метаданных блоков порядок сохраняется.</p>}
-            <button type="button" disabled={isSaving} className="mt-4 min-h-11 px-4" onClick={() => setShowReorder(false)}>Отмена</button>
-          </BottomSheet>
+          <SessionOrderEditor
+            session={session}
+            busy={isSaving}
+            error={reorderError}
+            onClose={() => setShowReorder(false)}
+            onApply={(order) => void reorder(order)}
+          />
         ) : null}
         <div className="session-content">
           {error ? <RepositoryErrorAlert message={error} /> : null}
@@ -553,11 +550,32 @@ export function WorkoutSessionScreen({
                   {isSaving ? 'Сохранение…' : 'Выполнено'}
                 </button>
               )}
-              {currentStep.type === 'exercise' ? (
-                <button type="button" disabled={isSaving || editingField !== null}
-                  className="mt-3 min-h-11 w-full border border-slate-700 px-4 text-sm text-slate-200"
-                  onClick={() => setShowReorder(true)}>
-                  ⇄ Поменять порядок
+              {session.status === 'exercise' || session.status === 'rest' ? (
+                <button
+                  type="button"
+                  disabled={isSaving || editingField !== null}
+                  className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 border border-slate-700 px-4 text-sm text-slate-200"
+                  onClick={() => {
+                    setReorderError(undefined)
+                    setShowReorder(true)
+                  }}
+                >
+                  <svg
+                    aria-hidden="true"
+                    data-icon="arrow-left-right"
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className="shrink-0 text-lime-300"
+                  >
+                    <path d="m8 3-4 4 4 4M4 7h16m-4 14 4-4-4-4M20 17H4" />
+                  </svg>
+                  Поменять порядок
                 </button>
               ) : null}
               <aside

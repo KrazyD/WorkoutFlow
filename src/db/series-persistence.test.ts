@@ -146,10 +146,11 @@ it('rolls back repetitions on session write failure and can edit a deleted exerc
 })
 
 it('atomically stores session order across DB reopen without modifying the template or catalog', async () => {
-  const { swapSessionExercises } = await import('../domain/workout-session')
+  const { getSessionOrder, reorderSession } = await import('../domain/workout-session')
   const { db, sessions, templates, template, session, exercises } = await setup()
   const catalog = await exercises.getAll()
-  const swapped = unwrap(swapSessionExercises(session, 'sb'))
+  const plan = getSessionOrder(session)
+  const swapped = unwrap(reorderSession(session, { blocks: plan.blocks.map((block) => ({...block, seriesIds: [...block.seriesIds].reverse()})) }))
   vi.spyOn(db.activeWorkoutSessions, 'put').mockRejectedValueOnce(new Error('disk full'))
   await expect(sessions.update(swapped)).rejects.toThrow('disk full')
   expect(await sessions.get()).toEqual(session)
@@ -160,4 +161,29 @@ it('atomically stores session order across DB reopen without modifying the templ
   expect(await templates.getById(template.id)).toEqual(template)
   expect(await exercises.getAll()).toEqual(catalog)
   expect(resolveWorkoutTemplate(template, catalog, await db.restPresets.toArray())?.steps[0]).toEqual(session.templateSnapshot.steps[0])
+})
+
+it('restores whole future supersets after DB reopen while the current set and source template remain intact', async () => {
+  const { getSessionOrder, reorderSession } = await import('../domain/workout-session')
+  const { db, sessions, templates, template, exercises } = await setup()
+  const catalog = await exercises.getAll()
+  const first = template.steps[0]
+  if (first.type !== 'superset') throw new Error('Expected superset')
+  const future = { ...first, id:'future', series:first.series.map((series) => ({...series,id:`future-${series.id}`})) }
+  const extended = {...template,steps:[first,future,{...first.series[0],id:'single'}]}
+  await db.workoutTemplates.put(extended)
+  const resolved = resolveWorkoutTemplate(extended,catalog,await db.restPresets.toArray())!
+  const session = unwrap(startWorkout(unwrap(createActiveWorkoutSession(resolved)),100))
+  const plan = getSessionOrder(session)
+  const reordered = unwrap(reorderSession(session,{blocks:[plan.blocks[0],plan.blocks[2],plan.blocks[1]]}))
+  await sessions.update(reordered)
+  db.close()
+  await db.open()
+  const restored = (await new DexieActiveWorkoutSessionRepository(db).get())!
+  expect(restored).toEqual(reordered)
+  expect(getSessionOrder(restored).blocks.map((block) => block.id)).toEqual(['block','single','future'])
+  expect(getCurrentStep(restored)).toEqual(getCurrentStep(session))
+  expect(await templates.getById(template.id)).toEqual(extended)
+  expect(await exercises.getAll()).toEqual(catalog)
+  expect(resolveWorkoutTemplate(extended,catalog,await db.restPresets.toArray())).toEqual(resolved)
 })
